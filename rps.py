@@ -76,35 +76,55 @@ def three_cycle_bot(p1hist, p2hist, whoAmI): # only uses hist length
     return (len(p1hist) - 1) % 3
 
 # Engine
-NUM_ROUNDS = 30 # 100000
-p1_game_history = []
-p2_game_history = []
+NUM_ROUNDS = 10000000 # 30
 p1_wins = 0
 p2_wins = 0
 draws = 0
+print(f"NUM_ROUNDS: {NUM_ROUNDS}")
 
-def do_round(p1, p2):
-    # print(p1_game_history)
-    # print(p2_game_history)
-    p1_move = p1(p1_game_history, p2_game_history, 1); p2_move = p2(p1_game_history, p2_game_history, 2)
+def do_round(p1, p2, p1hist, p2hist):
+    # print(p1hist)
+    # print(p2hist)
+    p1_move = p1(p1hist, p2hist, 1); p2_move = p2(p1hist, p2hist, 2)
     outcome = (p1_move - p2_move) % 3
-    p1_game_history.append(p1_move)
-    p2_game_history.append(p2_move)
+    p1hist.append(p1_move)
+    p2hist.append(p2_move)
     if outcome == 1:
-        global p1_wins; p1_wins += 1; #print(" p1 wins!")
+        global p1_wins; p1_wins += 1 #print(" p1 wins!")
     if outcome == 2:
-        global p2_wins; p2_wins += 1; #print(" p2 wins!")
+        global p2_wins; p2_wins += 1 #print(" p2 wins!")
     if outcome == 0:
-        global draws; draws += 1; #print(" draw!")
+        global draws; draws += 1 #print(" draw!")
 
 def play_game(p1, p2):
-    global NUM_ROUNDS;
-    print(f"  ~ {p1.__name__} ___vs___ {p2.__name__} ~")
-    print(f"                    ~ Match Length: {NUM_ROUNDS} Rounds ~")
+    global NUM_ROUNDS
+    p1_game_history = []
+    p2_game_history = []
+    global p1_wins
+    global p2_wins
+    global draws
+    # print()
+    # print(f"  ~ {p1.__name__} ___vs___ {p2.__name__} ~")
+    # print(f"                    ~ Match Length: {NUM_ROUNDS} Rounds ~")
     round = 0
     while round < NUM_ROUNDS:
-        do_round(p1, p2)
+        do_round(p1, p2, p1_game_history, p2_game_history)
         round += 1
+    #print("~~ Match Complete ~~")
+    winner = -1
+    if p1_wins > p2_wins: winner = 1; #print("PLAYER 1 WINS")
+    elif p2_wins > p1_wins: winner = 2; #print("PLAYER 2 WINS")
+    else: winner = 0; #print ("IT'S A TIE! DRAW")
+    # print(f"PLAYER 1 WIN % {(p1_wins/NUM_ROUNDS)*100}")
+    # print(f"PLAYER 2 WIN % {(p2_wins/NUM_ROUNDS)*100}")
+    # print(f"DRAW % {(draws/NUM_ROUNDS)*100}")
+    # print("GAME HISTORY FOR P1 and P2:")
+    # print(p1_game_history)
+    # print(p2_game_history)
+    p1_wins = 0
+    p2_wins = 0
+    draws = 0
+    return winner
 
 # play_game(random_bot, constant_bot)
 # play_game(random_bot, historian_bot)
@@ -120,44 +140,56 @@ def play_game(p1, p2):
   # [2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1]
   # big win for historian bot after it fails to gain any traction against the two pattern bots (although has different draw rates for each of them)
 # play_game(youll_remain_bot, constant_bot) # good sanity check
-play_game(youll_change_bot, constant_bot) # lmao
+# play_game(youll_change_bot, constant_bot) # lmao
 # play_game(youll_remain_bot, youll_change_bot) # p1 wins 100%
-
-print("~~ Tournament Complete ~~")
-winner = -1
-if p1_wins > p2_wins: winner = 1; print("PLAYER 1 WINS")
-elif p2_wins > p1_wins: winner = 2; print("PLAYER 2 WINS")
-else: winner = 0; print ("IT'S A TIE! DRAW")
-print(f"PLAYER 1 WIN % {(p1_wins/NUM_ROUNDS)*100}")
-print(f"PLAYER 2 WIN % {(p2_wins/NUM_ROUNDS)*100}")
-print(f"DRAW % {(draws/NUM_ROUNDS)*100}")
-print("GAME HISTORY FOR P1 and P2:")
-print(p1_game_history)
-print(p2_game_history)
 
 # Tournament Engine
 
 tournament_competitors = [random_bot, constant_bot, random_throwback_bot, historian_bot, pattern_bot_1, pattern_bot_2, youll_remain_bot, youll_change_bot]
+# tournament_competitors = [youll_change_bot, youll_remain_bot, pattern_bot_2, pattern_bot_1, historian_bot, random_throwback_bot, constant_bot, random_bot]
 tournament_scores = [0, 0, 0, 0, 0, 0, 0, 0]
+win_table = [
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+]
 
 def round_robin(competitors, score):
     i = 0
     j = 1
     while i < len(competitors):
         while j < len(competitors):
-            play_game(competitors[i], competitors[j])
+            winner = play_game(competitors[i], competitors[j])
+            if winner == 1: tournament_scores[i] += 1; win_table[i][j] += 1
+            elif winner == 2: tournament_scores[j] += 1; win_table[j][1] += 1
+            else: tournament_scores[i] += .5; tournament_scores[j] += .5; win_table[i][j] += .5; win_table[j][i] += .5
+            # else: tournament_scores[i] += .4; tournament_scores[j] += .4; win_table[i][j] += .4; win_table[j][i] += .4
+            # else: tournament_scores[i] += .48; tournament_scores[j] += .48
+            # print(tournament_scores)
             j += 1
+        # print(j)
         i += 1
         j = i + 1
-
+    # print(i)
 round_robin(tournament_competitors, tournament_scores)
 
+print("~~ Tournament Complete ~~")
 print(tournament_scores)
+print(win_table)
 
-# winner = "PLAYER 1" if p1_wins > p2_wins else "PLAYER 2" if p2_wins > p1_wins else "DRAW"
-# print(winner)
+# at 50,000 rounds tournaments are super high-variance.
+# at 100,000 rounds, it's more consistent and entrant 7, youll remain bot, wins a lot.
+    # all the others besides youll remain do great, except constant bot and youll change bot both suck
+# shocking variety in tournament outcomes at 500,000
+# at 1,000,000 there's again some variety but youll_remain wins, patterns do good and so does random (random_throwback seems worse?)
+# 10,000,000: 1-youll_remain-6, 2-historian-5, 3-pattern_2-4.5, 4-pattern_1-4, 5-random-3, 6-youll_change-2.5, 7-constant-2, 8-throwback-1
 
-
+# I bet if I included a simple alternating bot or the cycle bot to complement the constant bot, youll_change would do less badly
 
 # Botdex
 #1 Random Bot 20230120
