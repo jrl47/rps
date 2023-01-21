@@ -1,17 +1,17 @@
 import random
 numbers_to_moves = {0: "rock", 1:"paper", 2:"scissors"}
 
-# Random Bot
+# 1 Random Bot
 # plays random moves
 def random_bot(p1hist, p2hist, whoAmI): # no hist usage
     return random.randint(0,2)
 
-# Constant Bot
+# 2 Constant Bot
 # plays rock
 def constant_bot(p1hist, p2hist, whoAmI): # no hist usage
     return 0
 
-# Random Throwback Bot
+# 3 Random Throwback Bot
 # after a random move, chooses a random player and a random past round and plays the historical move
 def random_throwback_bot(p1hist, p2hist, whoAmI): # 100% hist usage
     if not p1hist:
@@ -21,7 +21,7 @@ def random_throwback_bot(p1hist, p2hist, whoAmI): # 100% hist usage
     else:
         return random.choice(p2hist)
 
-# Historian Bot
+# 4 Historian Bot
 # after an arbitary move, plays p1's first move, then p2's first move, then p1's second move, then p2's second move...
 def historian_bot(p1hist, p2hist, whoAmI): # 100% hist usage
     if not p1hist:
@@ -32,7 +32,7 @@ def historian_bot(p1hist, p2hist, whoAmI): # 100% hist usage
     else:
         return p2hist[turn // 2]
 
-# Pattern Bot 1
+# 5 Pattern Bot 1
 # plays rock, rock, rock, paper, paper, rock
 def pattern_bot_1(p1hist, p2hist, whoAmI): # no hist usage
     match len(p1hist) % 6:
@@ -43,7 +43,7 @@ def pattern_bot_1(p1hist, p2hist, whoAmI): # no hist usage
         case 4: return 1
         case 5: return 0
 
-# Pattern Bot 2
+# 6 Pattern Bot 2
 # plays scissors, rock, rock, paper, paper, rock
 def pattern_bot_2(p1hist, p2hist, whoAmI): # no hist usage
     match len(p1hist) % 6:
@@ -54,12 +54,7 @@ def pattern_bot_2(p1hist, p2hist, whoAmI): # no hist usage
         case 4: return 1
         case 5: return 0
 
-# 3-Permutation Bot
-# plays an arbitrary 3-permutation aka 3-cycle; in this case, scissors, rock, paper.
-def three_cycle_bot(p1hist, p2hist, whoAmI): # only uses hist length
-    return (len(p1hist) - 1) % 3
-
-# Bet You'll Stay The Same Bot
+# 7 Bet You'll Stay The Same Bot
 # (1 arbitrary, then) plays the move that will beat the move rival just played
 def youll_remain_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se knows which player it is
     if not p1hist:
@@ -67,13 +62,18 @@ def youll_remain_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se 
     prev_opponent_move = p2hist[len(p1hist)-1] if whoAmI == 1 else p1hist[len(p1hist)-1]
     return (prev_opponent_move + 1) % 3
 
-# Bet You'll Change Bot
+# 8 Bet You'll Change Bot
 # (1 arbitrary, then) plays the move that could lose to the move rival just played (and so cant lose if you change)
 def youll_change_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se knows which player it is
     if not p1hist:
         return 1
     prev_opponent_move = p2hist[len(p1hist)-1] if whoAmI == 1 else p1hist[len(p1hist)-1]
     return (prev_opponent_move - 1) % 3
+
+# 9 3-Permutation Bot
+# plays an arbitrary 3-permutation aka 3-cycle; in this case, scissors, rock, paper.
+def three_cycle_bot(p1hist, p2hist, whoAmI): # only uses hist length
+    return (len(p1hist) - 1) % 3
 
 # Engine
 NUM_ROUNDS = 30 # 100000
@@ -135,11 +135,24 @@ print("GAME HISTORY FOR P1 and P2:")
 print(p1_game_history)
 print(p2_game_history)
 
-tournament_competitors = [random_bot, constant_bot, random_throwback_bot, historian_bot, pattern_bot_1, pattern_bot_2, youll_remain_bot, youll_change_bot]
-# def round_robin(competitors):
-#     #rodo
+# Tournament Engine
 
-# round_robin(tournament_competitors)
+tournament_competitors = [random_bot, constant_bot, random_throwback_bot, historian_bot, pattern_bot_1, pattern_bot_2, youll_remain_bot, youll_change_bot]
+tournament_scores = [0, 0, 0, 0, 0, 0, 0, 0]
+
+def round_robin(competitors, score):
+    i = 0
+    j = 1
+    while i < len(competitors):
+        while j < len(competitors):
+            play_game(competitors[i], competitors[j])
+            j += 1
+        i += 1
+        j = i + 1
+
+round_robin(tournament_competitors, tournament_scores)
+
+print(tournament_scores)
 
 # winner = "PLAYER 1" if p1_wins > p2_wins else "PLAYER 2" if p2_wins > p1_wins else "DRAW"
 # print(winner)
@@ -153,9 +166,9 @@ tournament_competitors = [random_bot, constant_bot, random_throwback_bot, histor
 #4 Historian Bot 20230120
 #5 Pattern Bot 1 20230120
 #6 Pattern Bot 2 20230120
-#7 3-Permutation Bot 20230120
-#8 You'll Remain Bot 20230120
-#9 You'll Change Bot 20230120
+#7 You'll Remain Bot 20230120
+#8 You'll Change Bot 20230120
+#9 3-Permutation Bot 20230120
 
 #10 ??? unknown meta remain/change strat? maybe something like "if I'm losing, switch to my alter ego" thing, btwn #8 and #9 (tho you could do this meta mechanism between any two other bots)
 
