@@ -34,8 +34,32 @@ def historian_bot(p1hist, p2hist): # 100% hist usage
     else:
         return p2hist[turn // 2]
 
+# Bet You'll Stay The Same Bot
+# plays the move that will beat the move you just played
+
+# Bet You'll Change Bot
+# plays the move 
+
+
+# Pattern Bot 1
+# plays rock, rock, rock, paper, paper, rock
+def pattern_bot_1(p1hist, p2hist):
+    match len(p1hist) % 6:
+        case 0:
+            return 0
+        case 1:
+            return 0
+        case 2:
+            return 0
+        case 3:
+            return 1
+        case 4:
+            return 1
+        case 5:
+            return 0
+
 # Engine
-NUM_ROUNDS = 50000 
+NUM_ROUNDS = 30 # 50000
 p1_game_history = []
 p2_game_history = []
 p1_wins = 0
@@ -60,8 +84,9 @@ round = 0
 while round < NUM_ROUNDS:
     # print(f"~ Round {round + 1} ~")
     # do_round(random_bot, constant_bot)
-    do_round(random_throwback_bot, constant_bot)
     # do_round(random_bot, historian_bot)
+    # do_round(random_throwback_bot, constant_bot) # VERY INTERESTING
+    do_round(historian_bot, pattern_bot_1)
     # p1_game_history[round] = random_throwback_bot(p1hist, p2hist)  random_throwback_bot(p1hist, p2hist, )
     round += 1
 
@@ -74,8 +99,8 @@ print(f"PLAYER 1 WIN % {(p1_wins/NUM_ROUNDS)*100}")
 print(f"PLAYER 2 WIN % {(p2_wins/NUM_ROUNDS)*100}")
 print(f"DRAW % {(draws/NUM_ROUNDS)*100}")
 print("GAME HISTORY FOR P1 and P2:")
-# print(p1_game_history)
-# print(p2_game_history)
+print(p1_game_history)
+print(p2_game_history)
 
 # winner = "PLAYER 1" if p1_wins > p2_wins else "PLAYER 2" if p2_wins > p1_wins else "DRAW"
 # print(winner)
@@ -86,3 +111,5 @@ print("GAME HISTORY FOR P1 and P2:")
 # rationing out randomness bit by bit?
 # as a step up from purely deterministic bots which always have a perfect counter-bot that formally exists
 # how un-counter-bottable can you become with one bit of randomness per move?
+
+# kolmogorov complexity of extremely finite strings
