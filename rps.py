@@ -1,13 +1,16 @@
 import random
 numbers_to_moves = {0: "rock", 1:"paper", 2:"scissors"}
+
 # Random Bot
 # plays random moves
 def random_bot(p1hist, p2hist, whoAmI): # no hist usage
     return random.randint(0,2)
+
 # Constant Bot
 # plays rock
 def constant_bot(p1hist, p2hist, whoAmI): # no hist usage
     return 0
+
 # Random Throwback Bot
 # after a random move, chooses a random player and a random past round and plays the historical move
 def random_throwback_bot(p1hist, p2hist, whoAmI): # 100% hist usage
@@ -17,6 +20,7 @@ def random_throwback_bot(p1hist, p2hist, whoAmI): # 100% hist usage
         return random.choice(p1hist)
     else:
         return random.choice(p2hist)
+
 # Historian Bot
 # after an arbitary move, plays p1's first move, then p2's first move, then p1's second move, then p2's second move...
 def historian_bot(p1hist, p2hist, whoAmI): # 100% hist usage
@@ -27,6 +31,7 @@ def historian_bot(p1hist, p2hist, whoAmI): # 100% hist usage
         return p1hist[turn // 2]
     else:
         return p2hist[turn // 2]
+
 # Pattern Bot 1
 # plays rock, rock, rock, paper, paper, rock
 def pattern_bot_1(p1hist, p2hist, whoAmI): # no hist usage
@@ -37,6 +42,7 @@ def pattern_bot_1(p1hist, p2hist, whoAmI): # no hist usage
         case 3: return 1
         case 4: return 1
         case 5: return 0
+
 # Pattern Bot 2
 # plays scissors, rock, rock, paper, paper, rock
 def pattern_bot_2(p1hist, p2hist, whoAmI): # no hist usage
@@ -47,29 +53,30 @@ def pattern_bot_2(p1hist, p2hist, whoAmI): # no hist usage
         case 3: return 1
         case 4: return 1
         case 5: return 0
+
 # 3-Permutation Bot
 # plays an arbitrary 3-permutation aka 3-cycle; in this case, scissors, rock, paper.
 def three_cycle_bot(p1hist, p2hist, whoAmI): # only uses hist length
     return (len(p1hist) - 1) % 3
 
 # Bet You'll Stay The Same Bot
-# (1 arbitrary, then) plays the move that will beat the move you just played
-# def youll_remain_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se knows which player it is
-#     if (whoAmI == 1): 
-#         # 
-#     else: #luigi
-#         #
+# (1 arbitrary, then) plays the move that will beat the move rival just played
+def youll_remain_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se knows which player it is
+    if not p1hist:
+        return 2
+    prev_opponent_move = p2hist[len(p1hist)-1] if whoAmI == 1 else p1hist[len(p1hist)-1]
+    return (prev_opponent_move + 1) % 3
 
 # Bet You'll Change Bot
-# (1 arbitrary, then) plays the move that could lose to the move you just played (and so cant lose if you change)
-# def youll_change_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se knows which player it is
-#     if (whoAmI == 1): 
-#         #
-#     else: #luigi
-#         #
+# (1 arbitrary, then) plays the move that could lose to the move rival just played (and so cant lose if you change)
+def youll_change_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se knows which player it is
+    if not p1hist:
+        return 1
+    prev_opponent_move = p2hist[len(p1hist)-1] if whoAmI == 1 else p1hist[len(p1hist)-1]
+    return (prev_opponent_move - 1) % 3
 
 # Engine
-NUM_ROUNDS = 100000
+NUM_ROUNDS = 30 # 100000
 p1_game_history = []
 p2_game_history = []
 p1_wins = 0
@@ -104,10 +111,17 @@ def play_game(p1, p2):
 # play_game(random_throwback_bot, constant_bot) # VERY INTERESTING
 # play_game(random_throwback_bot, random_throwback_bot) # high variance at 100000 rounds
 # play_game(historian_bot, pattern_bot_1) # contrast a
-play_game(historian_bot, pattern_bot_2) # contrast a
+# play_game(historian_bot, pattern_bot_2) # contrast a
 # play_game(random_throwback_bot, pattern_bot_1) # contrast b
 # play_game(random_throwback_bot, pattern_bot_2) # contrast b
-# play_game(historian_bot, three_cycle_bot)
+# play_game(historian_bot, three_cycle_bot) # these results are striking but I checked that three_cycle_bot is implemented correctly and the match works out logically
+  # example match:
+  # [1, 1, 2, 1, 0, 2, 1, 1, 2, 0, 0, 2, 1, 1, 2, 1, 0, 2, 1, 0, 2, 0, 0, 2, 1, 1, 2, 1, 0, 2]
+  # [2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1]
+  # big win for historian bot after it fails to gain any traction against the two pattern bots (although has different draw rates for each of them)
+# play_game(youll_remain_bot, constant_bot) # good sanity check
+play_game(youll_change_bot, constant_bot) # lmao
+# play_game(youll_remain_bot, youll_change_bot) # p1 wins 100%
 
 print("~~ Tournament Complete ~~")
 winner = -1
@@ -117,9 +131,15 @@ else: winner = 0; print ("IT'S A TIE! DRAW")
 print(f"PLAYER 1 WIN % {(p1_wins/NUM_ROUNDS)*100}")
 print(f"PLAYER 2 WIN % {(p2_wins/NUM_ROUNDS)*100}")
 print(f"DRAW % {(draws/NUM_ROUNDS)*100}")
-# print("GAME HISTORY FOR P1 and P2:")
-# print(p1_game_history)
-# print(p2_game_history)
+print("GAME HISTORY FOR P1 and P2:")
+print(p1_game_history)
+print(p2_game_history)
+
+tournament_competitors = [random_bot, constant_bot, random_throwback_bot, historian_bot, pattern_bot_1, pattern_bot_2, youll_remain_bot, youll_change_bot]
+# def round_robin(competitors):
+#     #rodo
+
+# round_robin(tournament_competitors)
 
 # winner = "PLAYER 1" if p1_wins > p2_wins else "PLAYER 2" if p2_wins > p1_wins else "DRAW"
 # print(winner)
@@ -136,7 +156,24 @@ print(f"DRAW % {(draws/NUM_ROUNDS)*100}")
 #7 3-Permutation Bot 20230120
 #8 You'll Remain Bot 20230120
 #9 You'll Change Bot 20230120
+
 #10 ??? unknown meta remain/change strat? maybe something like "if I'm losing, switch to my alter ego" thing, btwn #8 and #9 (tho you could do this meta mechanism between any two other bots)
+
+# Bet I'll Stay The Same Bot (Bugged Bot)\
+# (1 arbitrary, then) plays the move that will beat the move self just played (bugged bot)
+# def ill_remain_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se knows which player it is
+#     if not p1hist:
+#         return 2
+#     prev_opponent_move = p1hist[len(p1hist)-1] if whoAmI == 1 else p2hist[len(p1hist)-1]
+#     print(prev_opponent_move)
+#     return (prev_opponent_move + 1) % 3
+
+# Bet I'll Change Bot (Bugged Bot)\
+# (1 arbitrary, then) plays the move that could lose to the move self just played (bugged bot)
+# def ill_change_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se knows which player it is
+#     if not p1hist:
+#         return 1
+#     prev_opponent_move = p1hist[len(p1hist)-1] if whoAmI == 1 else p2hist[len(p1hist)-1]
 
 
 # De Se Bot Template
