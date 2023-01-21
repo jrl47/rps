@@ -76,7 +76,7 @@ def three_cycle_bot(p1hist, p2hist, whoAmI): # only uses hist length
     return (len(p1hist) - 1) % 3
 
 # Engine
-NUM_ROUNDS = 10000000 # 30
+NUM_ROUNDS = 50000 # 30
 p1_wins = 0
 p2_wins = 0
 draws = 0
@@ -145,20 +145,6 @@ def play_game(p1, p2):
 
 # Tournament Engine
 
-tournament_competitors = [random_bot, constant_bot, random_throwback_bot, historian_bot, pattern_bot_1, pattern_bot_2, youll_remain_bot, youll_change_bot]
-# tournament_competitors = [youll_change_bot, youll_remain_bot, pattern_bot_2, pattern_bot_1, historian_bot, random_throwback_bot, constant_bot, random_bot]
-tournament_scores = [0, 0, 0, 0, 0, 0, 0, 0]
-win_table = [
-    [0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0],
-]
-
 def round_robin(competitors, score):
     i = 0
     j = 1
@@ -166,21 +152,55 @@ def round_robin(competitors, score):
         while j < len(competitors):
             winner = play_game(competitors[i], competitors[j])
             if winner == 1: tournament_scores[i] += 1; win_table[i][j] += 1
-            elif winner == 2: tournament_scores[j] += 1; win_table[j][1] += 1
+            elif winner == 2: tournament_scores[j] += 1; win_table[j][i] += 1
             else: tournament_scores[i] += .5; tournament_scores[j] += .5; win_table[i][j] += .5; win_table[j][i] += .5
-            # else: tournament_scores[i] += .4; tournament_scores[j] += .4; win_table[i][j] += .4; win_table[j][i] += .4
-            # else: tournament_scores[i] += .48; tournament_scores[j] += .48
             # print(tournament_scores)
             j += 1
         # print(j)
         i += 1
         j = i + 1
     # print(i)
-round_robin(tournament_competitors, tournament_scores)
+
+tournament_competitors = [random_bot, constant_bot, random_throwback_bot, historian_bot, pattern_bot_1, pattern_bot_2, youll_remain_bot, youll_change_bot, three_cycle_bot]
+# tournament_competitors = [youll_change_bot, youll_remain_bot, pattern_bot_2, pattern_bot_1, historian_bot, random_throwback_bot, constant_bot, random_bot]
+tournament_scores = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+competitor_names = list(map(lambda x: x.__name__, tournament_competitors))
+win_table = []
+i = 0
+j = 0
+while i < len(tournament_competitors):
+    win_table.append([])
+    while j < len(tournament_competitors):
+        win_table[i].append(0)
+        j += 1
+    i += 1
+    j = 0
+
+# For just running a single-round RR tournament
+# round_robin(tournament_competitors, tournament_scores)
+
+# EXPERIMENTAL
+i = 0
+NUM_ROUND_ROBINS = 10
+print(f"NUM ROUND ROBINS: {NUM_ROUND_ROBINS}")
+print(f"COMPETITORS: {competitor_names}")
+while i < NUM_ROUND_ROBINS:
+    round_robin(tournament_competitors, tournament_scores)
+    i += 1
 
 print("~~ Tournament Complete ~~")
 print(tournament_scores)
-print(win_table)
+# print(win_table)
+i = 0
+j = 0
+while i < len(win_table):
+    print("[", end="")
+    while j < len(win_table):
+        print(f"{win_table[i][j]},".ljust(5), end="")
+        j += 1
+    print("]")
+    j = 0
+    i += 1
 
 # at 50,000 rounds tournaments are super high-variance.
 # at 100,000 rounds, it's more consistent and entrant 7, youll remain bot, wins a lot.
