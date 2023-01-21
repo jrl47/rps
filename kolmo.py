@@ -1,3 +1,5 @@
+# kolmogorov complexity of extremely finite strings
+
 def f0():
     result = ""; length = 1
     while len(result) < length:
