@@ -6,10 +6,17 @@ numbers_to_moves = {0: "rock", 1:"paper", 2:"scissors"}
 def random_bot(p1hist, p2hist, whoAmI): # no hist usage
     return random.randint(0,2)
 
-# 2 Constant Bot
+# 2a Rock Bot
 # plays rock
-def constant_bot(p1hist, p2hist, whoAmI): # no hist usage
+def rock_bot(p1hist, p2hist, whoAmI): # no hist usage
     return 0
+
+# 2 Constant Bot
+# randomly picks a move to play forever
+def constant_bot(p1hist, p2hist, whoAmI): # no hist usage
+    if not p1hist:
+        return random.randint(0,2)
+    return(p1hist[0] if whoAmI == 1 else p2hist[0])
 
 # 3 Random Throwback Bot
 # after a random move, chooses a random player and a random past round and plays the historical move
@@ -22,10 +29,10 @@ def random_throwback_bot(p1hist, p2hist, whoAmI): # 100% hist usage
         return random.choice(p2hist)
 
 # 4 Historian Bot
-# after an arbitary move, plays p1's first move, then p2's first move, then p1's second move, then p2's second move...
+# after a random move, plays p1's first move, then p2's first move, then p1's second move, then p2's second move...
 def historian_bot(p1hist, p2hist, whoAmI): # 100% hist usage
     if not p1hist:
-        return 1
+        return random.randint(0,2)
     turn = len(p1hist) - 1 # minus one to offset the very first turn where an arbitrary move is played
     if turn % 2 == 0:
         return p1hist[turn // 2]
@@ -55,18 +62,18 @@ def pattern_bot_2(p1hist, p2hist, whoAmI): # no hist usage
         case 5: return 0
 
 # 7 Bet You'll Stay The Same Bot
-# (1 arbitrary, then) plays the move that will beat the move rival just played
+# (1 random, then) plays the move that will beat the move rival just played
 def youll_remain_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se knows which player it is
     if not p1hist:
-        return 2
+        return random.randint(0,2)
     prev_opponent_move = p2hist[len(p1hist)-1] if whoAmI == 1 else p1hist[len(p1hist)-1]
     return (prev_opponent_move + 1) % 3
 
 # 8 Bet You'll Change Bot
-# (1 arbitrary, then) plays the move that could lose to the move rival just played (and so cant lose if you change)
+# (1 random, then) plays the move that could lose to the move rival just played (and so cant lose if you change)
 def youll_change_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se knows which player it is
     if not p1hist:
-        return 1
+        return random.randint(0,2)
     prev_opponent_move = p2hist[len(p1hist)-1] if whoAmI == 1 else p1hist[len(p1hist)-1]
     return (prev_opponent_move - 1) % 3
 
@@ -76,7 +83,7 @@ def three_cycle_bot(p1hist, p2hist, whoAmI): # only uses hist length
     return (len(p1hist) - 1) % 3
 
 # Engine
-NUM_ROUNDS = 50000 # 30
+NUM_ROUNDS = 10000 # 50000
 p1_wins = 0
 p2_wins = 0
 draws = 0
@@ -110,11 +117,11 @@ def play_game(p1, p2):
     while round < NUM_ROUNDS:
         do_round(p1, p2, p1_game_history, p2_game_history)
         round += 1
-    #print("~~ Match Complete ~~")
     winner = -1
     if p1_wins > p2_wins: winner = 1; #print("PLAYER 1 WINS")
     elif p2_wins > p1_wins: winner = 2; #print("PLAYER 2 WINS")
     else: winner = 0; #print ("IT'S A TIE! DRAW")
+    # print("~~ Match Complete ~~")
     # print(f"PLAYER 1 WIN % {(p1_wins/NUM_ROUNDS)*100}")
     # print(f"PLAYER 2 WIN % {(p2_wins/NUM_ROUNDS)*100}")
     # print(f"DRAW % {(draws/NUM_ROUNDS)*100}")
@@ -163,7 +170,9 @@ def round_robin(competitors, score):
 
 tournament_competitors = [random_bot, constant_bot, random_throwback_bot, historian_bot, pattern_bot_1, pattern_bot_2, youll_remain_bot, youll_change_bot, three_cycle_bot]
 # tournament_competitors = [youll_change_bot, youll_remain_bot, pattern_bot_2, pattern_bot_1, historian_bot, random_throwback_bot, constant_bot, random_bot]
-tournament_scores = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+tournament_scores = []
+for i in range(len(tournament_competitors)):
+    tournament_scores.append(0)
 competitor_names = list(map(lambda x: x.__name__, tournament_competitors))
 win_table = []
 i = 0
@@ -181,7 +190,7 @@ while i < len(tournament_competitors):
 
 # EXPERIMENTAL
 i = 0
-NUM_ROUND_ROBINS = 10
+NUM_ROUND_ROBINS = 100
 print(f"NUM ROUND ROBINS: {NUM_ROUND_ROBINS}")
 print(f"COMPETITORS: {competitor_names}")
 while i < NUM_ROUND_ROBINS:
@@ -190,13 +199,24 @@ while i < NUM_ROUND_ROBINS:
 
 print("~~ Tournament Complete ~~")
 print(tournament_scores)
-# print(win_table)
+normalized_scores = list(map(lambda x: x/NUM_ROUND_ROBINS, tournament_scores))
+print(normalized_scores)
+competitor_objects = []
+for item in zip(tournament_competitors, normalized_scores, competitor_names):
+    competitor_objects.append({"bot": item[0], "score": item[1], "name": item[2]})
+competitor_objects.sort(key = lambda x: x['score'], reverse = True) # sort by score greatest to least
+current_rank = 1
+for competitor in competitor_objects:
+    print(f"RANK {current_rank}: {competitor['name']}, WITH SCORE: {competitor['score']}")
+    current_rank += 1
+# competitor_objects.sort(key = lambda x: x["score"])
+# print(competitor_objects)
 i = 0
 j = 0
 while i < len(win_table):
     print("[", end="")
     while j < len(win_table):
-        print(f"{win_table[i][j]},".ljust(5), end="")
+        print(f"{win_table[i][j]},".ljust(7), end="")
         j += 1
     print("]")
     j = 0
