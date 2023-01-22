@@ -13,7 +13,7 @@ def rock_bot(p1hist, p2hist, whoAmI): # no hist usage
 
 # 2 Constant Bot
 # randomly picks a move to play forever
-def constant_bot(p1hist, p2hist, whoAmI): # no hist usage
+def constant_bot(p1hist, p2hist, whoAmI): # no hist usage; de se & random just for random first move as root of pattern
     if not p1hist:
         return random.randint(0,2)
     return(p1hist[0] if whoAmI == 1 else p2hist[0])
@@ -30,10 +30,10 @@ def random_throwback_bot(p1hist, p2hist, whoAmI): # 100% hist usage
 
 # 4 Historian Bot
 # after a random move, plays p1's first move, then p2's first move, then p1's second move, then p2's second move...
-def historian_bot(p1hist, p2hist, whoAmI): # 100% hist usage
+def historian_bot(p1hist, p2hist, whoAmI): # 100% hist usage; random just for first move
     if not p1hist:
         return random.randint(0,2)
-    turn = len(p1hist) - 1 # minus one to offset the very first turn where an arbitrary move is played
+    turn = len(p1hist) - 1 # minus one to offset the very first turn where a random move is played
     if turn % 2 == 0:
         return p1hist[turn // 2]
     else:
@@ -41,25 +41,31 @@ def historian_bot(p1hist, p2hist, whoAmI): # 100% hist usage
 
 # 5 Pattern Bot 1
 # plays rock, rock, rock, paper, paper, rock
-def pattern_bot_1(p1hist, p2hist, whoAmI): # no hist usage
+def pattern_bot_1(p1hist, p2hist, whoAmI): # no hist usage; de se & random just for random first move as root of pattern
+    if not p1hist:
+        return random.randint(0,2)
+    base = p1hist[0] if whoAmI == 1 else p2hist[0]
     match len(p1hist) % 6:
-        case 0: return 0
-        case 1: return 0
-        case 2: return 0
-        case 3: return 1
-        case 4: return 1
-        case 5: return 0
+        case 0: return (base) % 3
+        case 1: return (base) % 3
+        case 2: return (base) % 3
+        case 3: return (base + 1) % 3
+        case 4: return (base + 1) % 3
+        case 5: return (base) % 3
 
 # 6 Pattern Bot 2
-# plays scissors, rock, rock, paper, paper, rock
-def pattern_bot_2(p1hist, p2hist, whoAmI): # no hist usage
+# plays scissors, rock, rock, paper, paper, rock 200110 = 011221
+def pattern_bot_2(p1hist, p2hist, whoAmI): # no hist usage; de se & random just for random first move as root of pattern
+    if not p1hist:
+        return random.randint(0,2)
+    base = p1hist[0] if whoAmI == 1 else p2hist[0]
     match len(p1hist) % 6:
-        case 0: return 2
-        case 1: return 0
-        case 2: return 0
-        case 3: return 1
-        case 4: return 1
-        case 5: return 0
+        case 0: return (base) % 3
+        case 1: return (base + 1) % 3
+        case 2: return (base + 1) % 3
+        case 3: return (base + 2) % 3
+        case 4: return (base + 2) % 3
+        case 5: return (base + 1) % 3
 
 # 7 Bet You'll Stay The Same Bot
 # (1 random, then) plays the move that will beat the move rival just played
@@ -77,13 +83,15 @@ def youll_change_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se 
     prev_opponent_move = p2hist[len(p1hist)-1] if whoAmI == 1 else p1hist[len(p1hist)-1]
     return (prev_opponent_move - 1) % 3
 
-# 9 3-Permutation Bot
-# plays an arbitrary 3-permutation aka 3-cycle; in this case, scissors, rock, paper.
-def three_cycle_bot(p1hist, p2hist, whoAmI): # only uses hist length
-    return (len(p1hist) - 1) % 3
+# 9 3-Cycle Bot
+# plays a random 3-permutation aka 3-cycle; in this case, rock, paper, scissors (where which move comes first is random)
+def three_cycle_bot(p1hist, p2hist, whoAmI): # only uses hist length; de se & random just for random first move as root of pattern
+    if not p1hist:
+        return random.randint(0,2)
+    return((p1hist[0] + len(p1hist)) % 3 if whoAmI == 1 else (p2hist[0] + len(p1hist)) % 3)
 
 # Engine
-NUM_ROUNDS = 10000 # 50000
+NUM_ROUNDS = 5000 # 10000
 p1_wins = 0
 p2_wins = 0
 draws = 0
@@ -148,9 +156,9 @@ def play_game(p1, p2):
   # big win for historian bot after it fails to gain any traction against the two pattern bots (although has different draw rates for each of them)
 # play_game(youll_remain_bot, constant_bot) # good sanity check
 # play_game(youll_change_bot, constant_bot) # lmao
-# play_game(youll_remain_bot, youll_change_bot) # p1 wins 100%
+play_game(youll_remain_bot, youll_change_bot) # p1 wins 66% of matches, p2 33% of matches; there are two equilibria that might happen of different rarity
 
-# Tournament Engine
+# Round Robin Tournament Engine
 
 def round_robin(competitors, score):
     i = 0
@@ -168,8 +176,14 @@ def round_robin(competitors, score):
         j = i + 1
     # print(i)
 
+def multi_round_robin(competitors, score, numRoundRobins):
+    i = 0
+    while i < NUM_ROUND_ROBINS:
+        round_robin(tournament_competitors, tournament_scores)
+        i += 1
+
+
 tournament_competitors = [random_bot, constant_bot, random_throwback_bot, historian_bot, pattern_bot_1, pattern_bot_2, youll_remain_bot, youll_change_bot, three_cycle_bot]
-# tournament_competitors = [youll_change_bot, youll_remain_bot, pattern_bot_2, pattern_bot_1, historian_bot, random_throwback_bot, constant_bot, random_bot]
 tournament_scores = []
 for i in range(len(tournament_competitors)):
     tournament_scores.append(0)
@@ -185,18 +199,10 @@ while i < len(tournament_competitors):
     i += 1
     j = 0
 
-# For just running a single-round RR tournament
-# round_robin(tournament_competitors, tournament_scores)
-
-# EXPERIMENTAL
-i = 0
-NUM_ROUND_ROBINS = 100
+NUM_ROUND_ROBINS = 5000
 print(f"NUM ROUND ROBINS: {NUM_ROUND_ROBINS}")
 print(f"COMPETITORS: {competitor_names}")
-while i < NUM_ROUND_ROBINS:
-    round_robin(tournament_competitors, tournament_scores)
-    i += 1
-
+multi_round_robin(tournament_competitors, tournament_scores, NUM_ROUND_ROBINS)
 print("~~ Tournament Complete ~~")
 print(tournament_scores)
 normalized_scores = list(map(lambda x: x/NUM_ROUND_ROBINS, tournament_scores))
@@ -209,38 +215,25 @@ current_rank = 1
 for competitor in competitor_objects:
     print(f"RANK {current_rank}: {competitor['name']}, WITH SCORE: {competitor['score']}")
     current_rank += 1
-# competitor_objects.sort(key = lambda x: x["score"])
-# print(competitor_objects)
-i = 0
-j = 0
+i = 0; j = 0
 while i < len(win_table):
     print("[", end="")
     while j < len(win_table):
         print(f"{win_table[i][j]},".ljust(7), end="")
         j += 1
     print("]")
-    j = 0
-    i += 1
-
-# at 50,000 rounds tournaments are super high-variance.
-# at 100,000 rounds, it's more consistent and entrant 7, youll remain bot, wins a lot.
-    # all the others besides youll remain do great, except constant bot and youll change bot both suck
-# shocking variety in tournament outcomes at 500,000
-# at 1,000,000 there's again some variety but youll_remain wins, patterns do good and so does random (random_throwback seems worse?)
-# 10,000,000: 1-youll_remain-6, 2-historian-5, 3-pattern_2-4.5, 4-pattern_1-4, 5-random-3, 6-youll_change-2.5, 7-constant-2, 8-throwback-1
-
-# I bet if I included a simple alternating bot or the cycle bot to complement the constant bot, youll_change would do less badly
+    j = 0; i += 1
 
 # Botdex
 #1 Random Bot 20230120
-#2 Constant Bot 20230120
+#2 Constant Bot 20230121
 #3 Random Throwback Bot 20230120
-#4 Historian Bot 20230120
-#5 Pattern Bot 1 20230120
-#6 Pattern Bot 2 20230120
-#7 You'll Remain Bot 20230120
-#8 You'll Change Bot 20230120
-#9 3-Permutation Bot 20230120
+#4 Historian Bot 20230121
+#5 Pattern Bot 1 20230121
+#6 Pattern Bot 2 20230121
+#7 You'll Remain Bot 20230121
+#8 You'll Change Bot 20230121
+#9 3-Cycle Bot 20230121
 
 #10 ??? unknown meta remain/change strat? maybe something like "if I'm losing, switch to my alter ego" thing, btwn #8 and #9 (tho you could do this meta mechanism between any two other bots)
 
