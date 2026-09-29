@@ -1,3 +1,4 @@
+import functools
 import math
 import random
 from fractions import Fraction
@@ -100,6 +101,96 @@ def youll_remain_if_won_else_change_bot(p1hist, p2hist, whoAmI, rng): # most-rec
     else:
         return (prev_rival_move - 1) % 3 # same as youll_change
 
+# String Bots
+# loop through a fixed string of moves forever: a sort of poor man's randomness, with no rng at all
+def string_bot(moves, name): # only uses hist length
+    def bot(p1hist, p2hist, whoAmI, rng):
+        return moves[len(p1hist) % len(moves)]
+    bot.__name__ = name
+    return bot
+
+def de_bruijn(order): # a loop of 3**order moves in which every run of `order` moves appears exactly once
+    moves = [0] * order # (greedy construction: start with all rocks, then keep adding the highest move that makes a new run)
+    seen = {tuple(moves)}
+    while True:
+        for move in (2, 1, 0):
+            run = tuple(moves[len(moves) - order + 1:] + [move])
+            if run not in seen:
+                seen.add(run); moves.append(move)
+                break
+        else:
+            break
+    return moves[:3 ** order]
+
+# 11 De Bruijn Bot
+# loops through an order-3 de Bruijn string: 27 moves in which every run of 3 moves appears exactly once
+# simple to describe (low kolmogorov complexity), but gives a predictor that looks back 2 moves nothing to go on
+de_bruijn_bot = string_bot(de_bruijn(3), "de_bruijn_bot")
+
+# 12 Battery 12 Bot
+# loops through an arbitrary 12-move string (drawn at random once, when the bot was written)
+battery_12_bot = string_bot([2, 2, 2, 1, 1, 0, 1, 1, 2, 1, 0, 0], "battery_12_bot")
+
+# Memory
+# A bot decorated with @with_memory gets a fifth argument, memory: a dict that lasts for one game (one per seat).
+# It's only for keeping track of things worked out from the history so the bot doesn't redo them every move,
+# so the bot still behaves as a function of the history.
+def with_memory(bot):
+    memories = {}
+    @functools.wraps(bot)
+    def bot_with_memory(p1hist, p2hist, whoAmI, rng):
+        if not p1hist or whoAmI not in memories: memories[whoAmI] = {} # new game
+        return bot(p1hist, p2hist, whoAmI, rng, memories[whoAmI])
+    return bot_with_memory
+
+# 13 Favorite Bot
+# bets the rival will play their most common move so far, and plays what beats it (ties go to rock, so it opens with paper)
+@with_memory
+def favorite_bot(p1hist, p2hist, whoAmI, rng, memory): # 100% hist usage (rival's); de se knows which player it is
+    rival_hist = p2hist if whoAmI == 1 else p1hist
+    counts = memory.setdefault("counts", [0, 0, 0])
+    for move in rival_hist[sum(counts):]:
+        counts[move] += 1
+    favorite = counts.index(max(counts))
+    return (favorite + 1) % 3
+
+# 14 Habit Bot
+# bets the rival will play whatever they've most often played after their last two moves, and plays what beats it
+# (if those two moves haven't come up before, it falls back on Favorite Bot's bet)
+@with_memory
+def habit_bot(p1hist, p2hist, whoAmI, rng, memory): # 100% hist usage (rival's); de se knows which player it is
+    rival_hist = p2hist if whoAmI == 1 else p1hist
+    counts = memory.setdefault("counts", [0, 0, 0])
+    after = memory.setdefault("after", {}) # the rival's two moves -> counts of what they played next
+    for t in range(sum(counts), len(rival_hist)):
+        counts[rival_hist[t]] += 1
+        if t >= 2:
+            after.setdefault((rival_hist[t - 2], rival_hist[t - 1]), [0, 0, 0])[rival_hist[t]] += 1
+    guess_counts = after.get(tuple(rival_hist[-2:]), counts)
+    guess = guess_counts.index(max(guess_counts))
+    return (guess + 1) % 3
+
+# 15 Deja Vu Bot
+# finds the last time the rival's most recent moves (up to 20 of them) came up before, bets they'll do what they did next,
+# and plays what beats it (rock if it has nothing to go on); catches any string bot once its string loops
+@with_memory
+def deja_vu_bot(p1hist, p2hist, whoAmI, rng, memory): # 100% hist usage (rival's); de se knows which player it is
+    rival_hist = p2hist if whoAmI == 1 else p1hist
+    seen = memory.get("seen", "") # the rival's moves as a string, like "0120"
+    after = memory.setdefault("after", {}) # a run of the rival's moves -> where the move after its latest appearance is in seen
+    for move in rival_hist[len(seen):]:
+        for length in range(1, min(20, len(seen)) + 1):
+            after[seen[-length:]] = len(seen)
+        seen += str(move)
+    memory["seen"] = seen
+    guess = None
+    for length in range(1, min(20, len(seen)) + 1): # (if the last `length` moves never came up before, longer runs didn't either)
+        position = after.get(seen[-length:])
+        if position is None: break
+        guess = int(seen[position])
+    if guess is None: return 0
+    return (guess + 1) % 3
+
 # Engine
 NUM_ROUNDS = 5000 # 10000
 MAX_BRANCHES = 4096 # a game is computed exactly if its random draws have at most this many possible sequences (4096 = 12 bits)
@@ -139,7 +230,12 @@ class Rng:
         self.bits += math.log2(len(seq))
         return seq[self.tape.draw(len(seq))]
 
-def play_game(p1, p2, tape=None): # returns p1's points (1 win, .5 tie, 0 loss) and the bits of randomness each bot used
+def points(margin): # 1 for a win, 1/2 for a tie, 0 for a loss; you have to win by more than 1 round
+    if margin > 1: return 1
+    if margin < -1: return 0
+    return Fraction(1, 2)
+
+def play_game(p1, p2, tape=None): # returns p1's margin (rounds won minus rounds lost) and the bits of randomness each bot used
     if tape is None: tape = Tape()
     rng1 = Rng(tape); rng2 = Rng(tape)
     p1hist = []; p2hist = []
@@ -151,13 +247,10 @@ def play_game(p1, p2, tape=None): # returns p1's points (1 win, .5 tie, 0 loss) 
         p2hist.append(p2_move)
         if outcome == 1: margin += 1
         elif outcome == 2: margin -= 1
-    if margin > 1: points = 1 # you have to win by more than 1
-    elif margin < -1: points = 0
-    else: points = .5
     # print(f"{p1.__name__} vs {p2.__name__}: p1 margin {margin}")
     # print(p1hist)
     # print(p2hist)
-    return points, rng1.bits, rng2.bits
+    return margin, rng1.bits, rng2.bits
 
 # play_game(random_bot, constant_bot)
 # play_game(random_bot, historian_bot)
@@ -178,31 +271,37 @@ def play_game(p1, p2, tape=None): # returns p1's points (1 win, .5 tie, 0 loss) 
 # play_game(youll_remain_if_won_else_change_bot, youll_remain_bot)
 
 # Exact & Sampled Games
+# A game's result is the probability of each margin p1 can end up with, which is enough to score a match either way (below).
 
-def exact_game(p1, p2): # p1's exact expected points and each bot's expected bits, found by playing every possible sequence of draws
-    points = p1_bits = p2_bits = 0
+def exact_game(p1, p2): # plays every possible sequence of draws once: {p1's margin: probability}, and each bot's expected bits
+    outcomes = {}
+    p1_bits = p2_bits = 0
     script = []
     while True: # (each path has probability >= 1 / MAX_BRANCHES, so there are at most MAX_BRANCHES paths)
         tape = Tape(script)
         random_state = random.getstate()
-        result = play_game(p1, p2, tape)
+        margin, bits_1, bits_2 = play_game(p1, p2, tape)
         if random.getstate() != random_state: # a bot used the random module, so this wouldn't really be exact
             raise RuntimeError(f"{p1.__name__} or {p2.__name__} uses the random module; bots must get randomness from rng")
         chance = Fraction(1, tape.branches)
-        points += chance * Fraction(result[0]); p1_bits += float(chance) * result[1]; p2_bits += float(chance) * result[2]
+        outcomes[margin] = outcomes.get(margin, 0) + chance
+        p1_bits += float(chance) * bits_1; p2_bits += float(chance) * bits_2
         # next sequence of draws, like an odometer: bump the last draw that isn't at its max, and drop everything after it
         draws = tape.draws
         while draws and draws[-1][0] == draws[-1][1] - 1:
             draws.pop()
         if not draws: break
         script = [value for value, n in draws[:-1]] + [draws[-1][0] + 1]
-    return float(points), p1_bits, p2_bits, 0.0
+    return outcomes, p1_bits, p2_bits, True
 
-def sampled_game(p1, p2): # same as exact_game but estimated, plus the standard error of p1's points
-    results = [play_game(p1, p2) for _ in range(NUM_SAMPLES)]
-    points = sum(r[0] for r in results) / NUM_SAMPLES
-    variance = sum((r[0] - points) ** 2 for r in results) / max(NUM_SAMPLES - 1, 1)
-    return points, sum(r[1] for r in results) / NUM_SAMPLES, sum(r[2] for r in results) / NUM_SAMPLES, math.sqrt(variance / NUM_SAMPLES)
+def sampled_game(p1, p2): # same as exact_game, but estimated from NUM_SAMPLES sampled games
+    outcomes = {}
+    p1_bits = p2_bits = 0
+    for _ in range(NUM_SAMPLES):
+        margin, bits_1, bits_2 = play_game(p1, p2)
+        outcomes[margin] = outcomes.get(margin, 0) + 1 / NUM_SAMPLES
+        p1_bits += bits_1 / NUM_SAMPLES; p2_bits += bits_2 / NUM_SAMPLES
+    return outcomes, p1_bits, p2_bits, False
 
 def expected_game(p1, p2):
     try:
@@ -210,51 +309,109 @@ def expected_game(p1, p2):
     except TooManyBranches:
         return sampled_game(p1, p2)
 
+# Match Scoring
+# Every match is two games with the seats swapped. There are two ways to score it:
+# PER-GAME: each game is worth half a point on its own
+# AGGREGATE: add up the margins from both games and score the total like one long game
+# Either way the result is exact if both games are, and otherwise comes with a standard error.
+
+def per_game_points(outcomes, exact): # p1's expected points from one game, and the standard error
+    mean = sum(chance * points(margin) for margin, chance in outcomes.items())
+    if exact: return mean, 0
+    variance = sum(chance * (points(margin) - mean) ** 2 for margin, chance in outcomes.items())
+    return mean, math.sqrt(variance / max(NUM_SAMPLES - 1, 1))
+
+def aggregate_points(outcomes_1, exact_1, outcomes_2, exact_2): # a's expected points with both games' margins added up, and the standard error
+    # (outcomes_1 are a's margins as p1 and outcomes_2 are b's margins as p1, so a's total margin is margin_1 - margin_2)
+    mean = 0
+    given_1 = {} # a's expected points given its margin in game 1
+    given_2 = {} # a's expected points given b's margin in game 2
+    for margin_1, chance_1 in outcomes_1.items():
+        for margin_2, chance_2 in outcomes_2.items():
+            p = points(margin_1 - margin_2)
+            mean += chance_1 * chance_2 * p
+            given_1[margin_1] = given_1.get(margin_1, 0) + chance_2 * p
+            given_2[margin_2] = given_2.get(margin_2, 0) + chance_1 * p
+    variance = 0 # (each sampled game contributes how much the result varies with its margin)
+    if not exact_1: variance += sum(chance * (given_1[m] - mean) ** 2 for m, chance in outcomes_1.items()) / max(NUM_SAMPLES - 1, 1)
+    if not exact_2: variance += sum(chance * (given_2[m] - mean) ** 2 for m, chance in outcomes_2.items()) / max(NUM_SAMPLES - 1, 1)
+    return mean, math.sqrt(variance)
+
 # Round Robin Tournament Engine
 
+SCORINGS = ["PER-GAME", "AGGREGATE"]
+
 def round_robin(competitors):
-    # every match is a pair of games with the seats swapped, each game worth half a point
+    # returns, for each scoring, a table of the row bot's expected points vs the column bot (0 to 1) and a table of
+    # standard errors, a table of which matches were sampled rather than exact, and each bot's average bits of randomness per game
     n = len(competitors)
-    win_table = [[0] * n for _ in range(n)] # expected points of row bot vs column bot (0 to 1)
-    error_table = [[0] * n for _ in range(n)] # standard error of each entry; 0 means exact
+    tables = {scoring: [[0] * n for _ in range(n)] for scoring in SCORINGS}
+    errors = {scoring: [[0] * n for _ in range(n)] for scoring in SCORINGS}
+    sampled = [[False] * n for _ in range(n)] # whether either game of the match was sampled
     bits = [0] * n
     for i in range(n):
         for j in range(i + 1, n):
             a = competitors[i]; b = competitors[j]
-            a_points_1, a_bits_1, b_bits_1, error_1 = expected_game(a, b) # a is p1
-            b_points_2, b_bits_2, a_bits_2, error_2 = expected_game(b, a) # b is p1
-            win_table[i][j] = (a_points_1 + (1 - b_points_2)) / 2
-            win_table[j][i] = 1 - win_table[i][j]
-            error_table[i][j] = error_table[j][i] = math.sqrt(error_1 ** 2 + error_2 ** 2) / 2
+            outcomes_1, a_bits_1, b_bits_1, exact_1 = expected_game(a, b) # a is p1
+            outcomes_2, b_bits_2, a_bits_2, exact_2 = expected_game(b, a) # b is p1
+            a_points_1, error_1 = per_game_points(outcomes_1, exact_1)
+            b_points_2, error_2 = per_game_points(outcomes_2, exact_2)
+            results = {"PER-GAME": ((a_points_1 + (1 - b_points_2)) / 2, math.sqrt(error_1 ** 2 + error_2 ** 2) / 2),
+                       "AGGREGATE": aggregate_points(outcomes_1, exact_1, outcomes_2, exact_2)}
+            for scoring, (a_points, error) in results.items():
+                tables[scoring][i][j] = clamp(a_points); tables[scoring][j][i] = clamp(1 - a_points)
+                errors[scoring][i][j] = errors[scoring][j][i] = error
+            sampled[i][j] = sampled[j][i] = not (exact_1 and exact_2)
             bits[i] += a_bits_1 + a_bits_2; bits[j] += b_bits_1 + b_bits_2
     bits_per_game = [b / (2 * (n - 1)) for b in bits]
-    return win_table, error_table, bits_per_game
+    return tables, errors, sampled, bits_per_game
+
+def clamp(points): # (keeps float rounding in sampled results from showing up as -0.000 or 1.000...02)
+    return min(max(float(points), 0.0), 1.0)
+
+def score_text(score, error, sampled):
+    return f"{score:.4f} ± {error:.4f}" if sampled else f"{score:.4f}"
 
 
 if __name__ == "__main__":
     print(f"NUM_ROUNDS: {NUM_ROUNDS}")
     print(f"MAX_BRANCHES: {MAX_BRANCHES}, NUM_SAMPLES: {NUM_SAMPLES}")
     # tournament_competitors = [random_bot, constant_bot, random_throwback_bot, historian_bot, pattern_bot_1, pattern_bot_2, youll_remain_bot, youll_change_bot, three_cycle_bot]
-    tournament_competitors = [random_bot, constant_bot, three_cycle_bot, pattern_bot_1, pattern_bot_2, random_throwback_bot, historian_bot, youll_remain_bot, youll_change_bot, youll_remain_if_won_else_change_bot]
+    tournament_competitors = [random_bot, constant_bot, three_cycle_bot, pattern_bot_1, pattern_bot_2, random_throwback_bot, historian_bot, youll_remain_bot, youll_change_bot, youll_remain_if_won_else_change_bot,
+                              de_bruijn_bot, battery_12_bot, favorite_bot, habit_bot, deja_vu_bot]
     competitor_names = list(map(lambda x: x.__name__, tournament_competitors))
-    print(f"COMPETITORS: {competitor_names}")
-    win_table, error_table, bits_per_game = round_robin(tournament_competitors)
+    print("COMPETITORS:")
+    for number, name in enumerate(competitor_names, 1):
+        print(f"  {number}. {name}")
+    tables, errors, sampled, bits_per_game = round_robin(tournament_competitors)
     print("~~ Tournament Complete ~~")
-    scores = [sum(row) for row in win_table]
-    errors = [math.sqrt(sum(e ** 2 for e in row)) for row in error_table]
-    ranking = sorted(zip(scores, errors, competitor_names, bits_per_game), key = lambda x: x[0], reverse = True) # sort by score greatest to least
-    current_rank = 1
-    for score, error, name, bits in ranking:
-        score_text = f"{score:.4f}" if error == 0 else f"{score:.4f} (± {error:.4f})"
-        print(f"RANK {current_rank}: {name}, WITH SCORE: {score_text}, BITS OF RANDOMNESS PER GAME: {bits:.2f}")
-        current_rank += 1
-    print("WIN TABLE (row's expected points vs column; ~ means sampled, otherwise exact)")
-    for i in range(len(win_table)):
-        print("[", end="")
-        for j in range(len(win_table)):
-            cell = "--" if i == j else ("~" if error_table[i][j] else "") + f"{win_table[i][j]:.3f}"
-            print(f"{cell},".ljust(8), end="")
-        print("]")
+    n = len(tournament_competitors)
+    scores = {s: [sum(row) for row in tables[s]] for s in SCORINGS}
+    score_errors = {s: [math.sqrt(sum(e ** 2 for e in row)) for row in errors[s]] for s in SCORINGS}
+    ranks = {}
+    for s in SCORINGS:
+        ranks[s] = [0] * n
+        for rank, i in enumerate(sorted(range(n), key = lambda i: scores[s][i], reverse = True), 1): # sort by score greatest to least
+            ranks[s][i] = rank
+    width = max(map(len, competitor_names)) + 2
+    print("RANK".ljust(6) + "BOT".ljust(width) + "PER-GAME SCORE".ljust(22) + "AGGREGATE SCORE (RANK)".ljust(28) + "BITS OF RANDOMNESS PER GAME")
+    for i in sorted(range(n), key = lambda i: ranks["PER-GAME"][i]):
+        print(f"{ranks['PER-GAME'][i]}".ljust(6) + competitor_names[i].ljust(width)
+              + score_text(scores["PER-GAME"][i], score_errors["PER-GAME"][i], any(sampled[i])).ljust(22)
+              + f"{score_text(scores['AGGREGATE'][i], score_errors['AGGREGATE'][i], any(sampled[i]))} ({ranks['AGGREGATE'][i]})".ljust(28)
+              + f"{bits_per_game[i]:.2f}")
+    print("MATCHUPS THE TWO SCORINGS DISAGREE ON (row bot's points)")
+    for i in range(n):
+        for j in range(i + 1, n):
+            difference = abs(tables["PER-GAME"][i][j] - tables["AGGREGATE"][i][j])
+            if difference > 1e-9 + 2 * (errors["PER-GAME"][i][j] + errors["AGGREGATE"][i][j]):
+                print(f"  {competitor_names[i]} vs {competitor_names[j]}: PER-GAME {tables['PER-GAME'][i][j]:.3f}, AGGREGATE {tables['AGGREGATE'][i][j]:.3f}")
+    for s in SCORINGS:
+        print(f"WIN TABLE, {s} SCORING (row bot's expected points vs column bot; ~ means sampled, otherwise exact)")
+        print("    " + "".join(f"{j + 1}".ljust(8) for j in range(n)))
+        for i in range(n):
+            cells = ["--" if i == j else ("~" if sampled[i][j] else "") + f"{tables[s][i][j]:.3f}" for j in range(n)]
+            print(f"{i + 1}".ljust(4) + "".join(cell.ljust(8) for cell in cells))
 
 # Botdex
 #1 Random Bot 20230120
@@ -267,6 +424,11 @@ if __name__ == "__main__":
 #8 You'll Remain Bot 20230121
 #9 You'll Change Bot 20230121
 #10 You'll Stay The Same If You Won Otherwise You'll Change Bot 20230121
+#11 De Bruijn Bot 20260929
+#12 Battery 12 Bot 20260929
+#13 Favorite Bot 20260929
+#14 Habit Bot 20260929
+#15 Deja Vu Bot 20260929
 
 #10 ??? unknown meta remain/change strat? maybe something like "if I'm losing, switch to my alter ego" thing
 

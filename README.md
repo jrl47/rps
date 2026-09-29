@@ -9,7 +9,18 @@ A bot is a function `bot(p1hist, p2hist, whoAmI, rng)` that returns 0 (rock), 1 
 - `whoAmI`: which seat the bot is in, 1 or 2
 - `rng`: the bot's only source of randomness, via `rng.randint(a, b)` and `rng.choice(seq)`. Don't use the `random` module directly: the engine needs to see every draw (and will complain if a bot uses `random` in an exact game).
 
+A bot decorated with `@with_memory` also gets a fifth argument, `memory`: a dict that lasts for one game. It's only for keeping track of things worked out from the history so the bot doesn't redo them every move (see the predator bots).
+
+`string_bot(moves, name)` makes a bot that loops through a fixed list of moves.
+
 ## Tournament
-- Every match is two games of `NUM_ROUNDS` rounds with the seats swapped, each worth half a point. You have to win a game by more than 1 round; otherwise it's a tie.
+- Every match is two games of `NUM_ROUNDS` rounds with the seats swapped. It's scored two ways:
+  - **per-game:** each game is worth half a point on its own
+  - **aggregate:** the margins (rounds won minus rounds lost) from both games are added up and scored like one long game
+
+  Either way you have to win by more than 1 round; otherwise it's a tie. Per-game scoring rewards winning often; aggregate scoring rewards winning big.
 - A game whose random draws have at most `MAX_BRANCHES` possible sequences is computed exactly, by playing every sequence and weighting it by its probability. Any other game is estimated from `NUM_SAMPLES` sampled games; those results are marked `~` and scores get a ± standard error.
-- The results also report how many bits of randomness each bot used per game.
+- The results also report how many bits of randomness each bot used per game, and which matchups the two scorings disagree on.
+
+## Experiments
+- `python3 string_experiment.py`: string bots (de Bruijn strings vs arbitrary strings, at lengths 3 to 6561) against the predator bots.
