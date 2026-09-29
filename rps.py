@@ -136,11 +136,12 @@ class Ration: # what a rationed bot gets instead of rng: the same draws, but onl
         self.spend(math.log2(len(seq)))
         return self.rng.choice(seq)
 
-def rationed(every, bits):
+def rationed(every, bits, at_start = 0): # (at_start: extra bits it may draw on round 0 only)
     def decorate(bot):
         @functools.wraps(bot)
         def rationed_bot(p1hist, p2hist, whoAmI, rng):
-            return bot(p1hist, p2hist, whoAmI, Ration(rng, bits if len(p1hist) % every == 0 else 0))
+            allowance = (bits if len(p1hist) % every == 0 else 0) + (at_start if not p1hist else 0)
+            return bot(p1hist, p2hist, whoAmI, Ration(rng, allowance))
         return rationed_bot
     return decorate
 
@@ -301,33 +302,54 @@ random_start_battery_12_bot = string_bot(BATTERY_12, "random_start_battery_12_bo
 
 # Plan Bots
 # every len(plans[0]) rounds, a plan bot picks one of its plans at random (log2(len(plans)) bits) and plays it
-# with a mask, each move is shifted by mask(round) (rock -> paper -> scissors -> rock), which costs no randomness
-def plan_bot(plans, name, mask = None): # only uses hist length
+# with a mask, each move is shifted by mask(round) (rock -> paper -> scissors -> rock), which costs no randomness;
+# with mask_bits, the mask starts at a secret place, mask(round + start), drawn once per game (mask_bits bits)
+# with a base (a deterministic bot), each move is also shifted by the base bot's move, so the plan says how to vary it
+def plan_bot(plans, name, mask = None, mask_bits = 0, base = None):
     every = len(plans[0])
     shift = mask or (lambda t: 0)
-    @rationed(every, math.log2(len(plans)))
+    @rationed(every, math.log2(len(plans)), at_start = mask_bits)
     @with_memory
     def bot(p1hist, p2hist, whoAmI, rng, memory):
+        if not p1hist: memory["start"] = rng.randint(0, 2 ** mask_bits - 1) if mask_bits else 0
         if len(p1hist) % every == 0: memory["plan"] = rng.randint(0, len(plans) - 1)
-        return (plans[memory["plan"]][len(p1hist) % every] + shift(len(p1hist))) % 3
+        move = plans[memory["plan"]][len(p1hist) % every] + shift(len(p1hist) + memory["start"])
+        return (move + (base(p1hist, p2hist, whoAmI, None) if base else 0)) % 3
     bot.__name__ = name
     bot.plans = plans
     bot.mask = mask
+    bot.base = base
     return bot
 
-# the perfect counter-bot to plan_bot(plans, mask = mask), for experiments: it knows the plans and the mask, works out
-# which plans fit the rival's moves so far this block, and plays whatever does best against where they lead next
-def plan_counter_bot(plans, name, mask = None):
+# the perfect counter-bot to plan_bot(plans, mask = mask, mask_bits = mask_bits, base = base), for experiments: it knows
+# the plans, the mask and the base bot, but not the rival's draws. It keeps track of which secret starts for the mask and
+# which plans still fit the rival's moves (and how likely each start is), and plays whatever does best against where
+# they lead next.
+def plan_counter_bot(plans, name, mask = None, mask_bits = 0, base = None, log = None): # (log: a list to append how many starts still fit, each round)
     every = len(plans[0])
     shift = mask or (lambda t: 0)
-    def bot(p1hist, p2hist, whoAmI, rng):
+    @with_memory
+    def bot(p1hist, p2hist, whoAmI, rng, memory):
         rival_hist = p2hist if whoAmI == 1 else p1hist
         now = len(rival_hist); t = now % every
-        unmasked = [(rival_hist[r] - shift(r)) % 3 for r in range(now - t, now)] # the rival's moves so far this block, mask removed
-        chances = [0, 0, 0] # how many of the plans that fit lead to each next move
-        for plan in plans:
-            if plan[:t] == unmasked:
-                chances[(plan[t] + shift(now)) % 3] += 1
+        bases = memory.setdefault("bases", []) # the base bot's move for the rival, each round
+        bases.append(base(p1hist, p2hist, 3 - whoAmI, None) if base else 0)
+        starts = memory.setdefault("starts", {s: [1.0, list(range(len(plans)))] for s in range(2 ** mask_bits)}) # start -> [weight, plans that fit this block]
+        if now: # rule out the starts and plans that don't fit the rival's last move
+            last = now - 1
+            for s in list(starts):
+                weight, fits = starts[s]
+                fits = [k for k in fits if (plans[k][last % every] + shift(last + s) + bases[last]) % 3 == rival_hist[last]]
+                if not fits: del starts[s]; continue
+                if t == 0: weight, fits = weight * len(fits) / len(plans), list(range(len(plans))) # (a block is over: how likely it was)
+                starts[s] = [weight, fits]
+            if t == 0: # (keep the weights from shrinking out of range)
+                biggest = max(weight for weight, fits in starts.values())
+                for s in starts: starts[s][0] /= biggest
+        if log is not None: log.append(len(starts))
+        chances = [0, 0, 0] # how likely each next move is
+        for s, (weight, fits) in starts.items():
+            for k in fits: chances[(plans[k][t] + shift(now + s) + bases[now]) % 3] += weight
         return best_response(chances)
     bot.__name__ = name
     return bot
@@ -347,14 +369,14 @@ def best_split(n, rounds): # the most margin n equally likely plans can buy in `
             if value > best[0] + 1e-9: best = (value, counts)
     return best
 
-def best_plans(n, rounds): # n plans of `rounds` moves that buy the most margin against the perfect counter-bot
+def best_plans(n, rounds, rest = None): # n plans of `rounds` moves that buy the most margin against the perfect counter-bot
     plans = [[] for _ in range(n)]
     def build(group, rounds_left): # group: plans the counter-bot can't tell apart yet
         if rounds_left == 0: return
         split = best_split(len(group), rounds_left)[1]
-        if split is None: # the counter-bot knows which plan this is by now, so the rest just cycles rock, paper, scissors
+        if split is None: # the counter-bot knows which plan this is by now, so the rest is `rest` (or cycles rock, paper, scissors)
             for p in group:
-                for _ in range(rounds_left): plans[p].append((plans[p][-1] + 1) % 3 if plans[p] else 0)
+                for _ in range(rounds_left): plans[p].append(rest if rest is not None else (plans[p][-1] + 1) % 3 if plans[p] else 0)
             return
         start = 0
         for move, count in enumerate(split):
@@ -398,6 +420,67 @@ def mixture_counter_bot(target, name, log = None): # (log: a list to append each
     bot.__name__ = name
     return bot
 
+# a deterministic version of a bot whose only randomness is its first move, so it can be a mixture bot's strategy
+def fixed_start(bot, move = 0):
+    def fixed(p1hist, p2hist, whoAmI, rng):
+        return move if not p1hist else bot(p1hist, p2hist, whoAmI, rng)
+    fixed.__name__ = bot.__name__
+    return fixed
+
+# the far-sighted counter-bot to a mixture bot, for experiments. Like mixture_counter_bot, but instead of making the best
+# move for this round alone, it plans ahead: it tries every sequence of its own moves for the rest of the block, and the
+# first `into_next_block` rounds of the next one, against every strategy that still fits (and all of them again after the
+# rival's next pick), and picks the move that leads to the most margin. So its moves can steer the strategies: into giving
+# themselves away, into agreeing with each other, or into moves it can beat. It tries its moves out on imagined futures,
+# so the strategies can't use memory. (Planning further into the next block gets slow fast, since every strategy fits again.)
+def lookahead_counter_bot(target, name, into_next_block = 1, log = None): # (log: as for mixture_counter_bot)
+    strategies, every = target.strategies, target.every
+    for strategy in strategies:
+        if hasattr(strategy, "__wrapped__"): # (with_memory marks the bots it wraps like this)
+            raise ValueError(f"{strategy.__name__} uses memory, so lookahead_counter_bot can't imagine futures for it")
+    def plan(p1hist, p2hist, whoAmI, fits, rounds_left): # (the most margin it can expect over the next rounds_left rounds, its best move)
+        if not fits: return 0, 0
+        proposals = [strategies[k](p1hist, p2hist, 3 - whoAmI, None) for k in fits] # what each would have the rival play now
+        rounds_to_pick = every - 1 - len(p1hist) % every # rounds after this one before the rival picks again
+        if len(fits) == 1: # it knows the strategy, so it just wins every round until the rival picks again
+            mine = (proposals[0] + 1) % 3
+            if rounds_left <= rounds_to_pick + 1: return rounds_left, mine
+            my_hist, rival_hist = (p1hist, p2hist) if whoAmI == 1 else (p2hist, p1hist)
+            my_hist.append(mine); rival_hist.append(proposals[0])
+            next_fits = fits if rounds_to_pick else list(range(len(strategies))) # (after a pick, any strategy fits again)
+            try: return 1 + plan(p1hist, p2hist, whoAmI, next_fits, rounds_left - 1)[0], mine
+            finally: my_hist.pop(); rival_hist.pop()
+        groups = {} # the rival's possible moves now -> the strategies that would play them
+        for k, move in zip(fits, proposals): groups.setdefault(move, []).append(k)
+        chances = [len(groups.get(move, [])) for move in range(3)]
+        best = None
+        for mine in sorted(range(3), key = lambda m: m != best_response(chances)): # (ties go to the one-round best move)
+            total = 0
+            for move, group in groups.items():
+                won = 1 if (mine - move) % 3 == 1 else -1 if (mine - move) % 3 == 2 else 0
+                if rounds_left > 1: # imagine this round being played, and plan the rest from there
+                    my_hist, rival_hist = (p1hist, p2hist) if whoAmI == 1 else (p2hist, p1hist)
+                    my_hist.append(mine); rival_hist.append(move)
+                    next_fits = group if rounds_to_pick else list(range(len(strategies))) # (after a pick, any strategy fits again)
+                    try: won += plan(p1hist, p2hist, whoAmI, next_fits, rounds_left - 1)[0]
+                    finally: my_hist.pop(); rival_hist.pop()
+                total += len(group) * won
+            if best is None or total > best[0] + 1e-9: best = (total, mine)
+        return best[0] / len(fits), best[1]
+    @with_memory
+    def bot(p1hist, p2hist, whoAmI, rng, memory):
+        rival_hist = p2hist if whoAmI == 1 else p1hist
+        if len(rival_hist) % every == 0: memory["fits"] = list(range(len(strategies))) # the rival just picked again
+        else: memory["fits"] = [k for k in memory["fits"] if memory["moves"][k] == rival_hist[-1]]
+        memory["moves"] = [strategy(p1hist, p2hist, 3 - whoAmI, None) for strategy in strategies]
+        if log is not None:
+            chances = [0, 0, 0]
+            for k in memory["fits"]: chances[memory["moves"][k]] += 1
+            log.append(chances)
+        return plan(p1hist, p2hist, whoAmI, memory["fits"], every - len(rival_hist) % every + into_next_block)[1]
+    bot.__name__ = name
+    return bot
+
 # 20 Burst Bot
 # every 10 rounds, draws 3 random moves (27 possibilities) and loops them for those 10 rounds
 burst_bot = plan_bot([[a, b, c, a, b, c, a, b, c, a] for a in range(3) for b in range(3) for c in range(3)], "burst_bot")
@@ -425,6 +508,17 @@ masked_lopsided_bot = plan_bot(best_plans(27, 10), "masked_lopsided_bot", mask =
 # 25 Sprinkled Pi Bot
 # plays the digits of pi, but every 10 rounds it shifts 3 of them (the 1st, 4th and 7th) by a random amount (27 possibilities)
 sprinkled_pi_bot = plan_bot([[a, 0, 0, b, 0, 0, c, 0, 0, 0] for a in range(3) for b in range(3) for c in range(3)], "sprinkled_pi_bot", mask = pi_digit)
+
+# 26 Lopsided Predator Bot
+# plays Deja Vu Bot's move, varied by one of Lopsided Bot's plans every 10 rounds (27 possibilities): usually Deja Vu Bot's
+# move, sometimes the move it beats. Its variations disagree in exactly the most efficient way, so against a bot that
+# knows all about it (Deja Vu Bot included), it buys as much as Lopsided Bot does, while playing mostly like Deja Vu Bot
+lopsided_predator_bot = plan_bot(best_plans(27, 10, rest = 0), "lopsided_predator_bot", base = deja_vu_bot)
+
+# 27 Secret Mask Bot
+# Masked Lopsided Bot, but it starts reading pi at a secret place (one of 4096, drawn once per game), so bots that happen
+# to play pi can't see through its mask
+secret_mask_bot = plan_bot(best_plans(27, 10), "secret_mask_bot", mask = pi_digit, mask_bits = 12)
 
 
 # Engine
@@ -629,7 +723,7 @@ if __name__ == "__main__":
     tournament_competitors = [random_bot, constant_bot, three_cycle_bot, pattern_bot_1, pattern_bot_2, random_throwback_bot, historian_bot, youll_remain_bot, youll_change_bot, youll_remain_if_won_else_change_bot,
                               de_bruijn_bot, battery_12_bot, favorite_bot, habit_bot, deja_vu_bot, overdue_bot, pi_bot,
                               random_start_de_bruijn_bot, random_start_battery_12_bot, burst_bot, jumpy_de_bruijn_bot, lopsided_bot, moody_predator_bot,
-                              masked_lopsided_bot, sprinkled_pi_bot]
+                              masked_lopsided_bot, sprinkled_pi_bot, lopsided_predator_bot, secret_mask_bot]
     competitor_names = list(map(lambda x: x.__name__, tournament_competitors))
     print("COMPETITORS:")
     for number, name in enumerate(competitor_names, 1):
@@ -690,6 +784,8 @@ if __name__ == "__main__":
 #23 Moody Predator Bot 20260929
 #24 Masked Lopsided Bot 20260929
 #25 Sprinkled Pi Bot 20260929
+#26 Lopsided Predator Bot 20260929
+#27 Secret Mask Bot 20260929
 
 #10 ??? unknown meta remain/change strat? maybe something like "if I'm losing, switch to my alter ego" thing
 
