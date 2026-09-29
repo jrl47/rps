@@ -1,5 +1,7 @@
 import functools
 import math
+import multiprocessing
+import os
 import random
 from fractions import Fraction
 numbers_to_moves = {0: "rock", 1:"paper", 2:"scissors"}
@@ -112,6 +114,35 @@ def with_memory(bot):
         if not p1hist or whoAmI not in memories: memories[whoAmI] = {} # new game
         return bot(p1hist, p2hist, whoAmI, rng, memories[whoAmI])
     return bot_with_memory
+
+# Rationing
+# A bot decorated with @rationed(every, bits) may only draw randomness on rounds 0, every, 2 * every, ..., and at most
+# `bits` bits of it each time. It can save what it draws (in memory) and use it later: what's limited is how much
+# randomness it gets, not when it uses it. (Making 10 moves completely unpredictable takes log2(3**10) = 15.85 bits.)
+class RationExceeded(Exception):
+    pass
+
+class Ration: # what a rationed bot gets instead of rng: the same draws, but only up to this round's allowance
+    def __init__(self, rng, bits):
+        self.rng = rng
+        self.left = bits
+    def spend(self, bits):
+        self.left -= bits
+        if self.left < -1e-9: raise RationExceeded("a rationed bot drew more randomness than it's allowed this round")
+    def randint(self, a, b):
+        self.spend(math.log2(b - a + 1))
+        return self.rng.randint(a, b)
+    def choice(self, seq):
+        self.spend(math.log2(len(seq)))
+        return self.rng.choice(seq)
+
+def rationed(every, bits):
+    def decorate(bot):
+        @functools.wraps(bot)
+        def rationed_bot(p1hist, p2hist, whoAmI, rng):
+            return bot(p1hist, p2hist, whoAmI, Ration(rng, bits if len(p1hist) % every == 0 else 0))
+        return rationed_bot
+    return decorate
 
 # String Bots
 # loop through a fixed string of moves forever: a sort of poor man's randomness
@@ -261,6 +292,90 @@ random_start_de_bruijn_bot = string_bot(de_bruijn(3), "random_start_de_bruijn_bo
 # 19 Random Start Battery 12 Bot
 # Battery 12 Bot, but it starts at a random point in its string (log2(12) = 3.58 bits of randomness)
 random_start_battery_12_bot = string_bot(BATTERY_12, "random_start_battery_12_bot", random_start = True)
+
+# Plan Bots
+# every len(plans[0]) rounds, a plan bot picks one of its plans at random (log2(len(plans)) bits) and plays it
+def plan_bot(plans, name): # only uses hist length
+    every = len(plans[0])
+    @rationed(every, math.log2(len(plans)))
+    @with_memory
+    def bot(p1hist, p2hist, whoAmI, rng, memory):
+        if len(p1hist) % every == 0: memory["plan"] = rng.randint(0, len(plans) - 1)
+        return plans[memory["plan"]][len(p1hist) % every]
+    bot.__name__ = name
+    bot.plans = plans
+    return bot
+
+# the perfect counter-bot to plan_bot(plans), for experiments: it knows the plans, works out which ones fit the rival's
+# moves so far this block, and plays whatever does best against where they lead next
+def plan_counter_bot(plans, name):
+    every = len(plans[0])
+    def bot(p1hist, p2hist, whoAmI, rng):
+        rival_hist = p2hist if whoAmI == 1 else p1hist
+        t = len(rival_hist) % every
+        chances = [0, 0, 0] # how many of the plans that fit lead to each next move
+        for plan in plans:
+            if plan[:t] == rival_hist[len(rival_hist) - t:]:
+                chances[plan[t]] += 1
+        return max(range(3), key = lambda m: chances[(m - 1) % 3] - chances[(m + 1) % 3]) # beats the most, loses to the fewest
+    bot.__name__ = name
+    return bot
+
+def round_gain(counts): # the margin a round buys when the perfect counter-bot knows the next move is rock, paper or scissors in these proportions
+    return 1 - max(counts[(m - 1) % 3] - counts[(m + 1) % 3] for m in range(3)) / sum(counts)
+
+@functools.lru_cache(maxsize = None)
+def best_split(n, rounds): # the most margin n equally likely plans can buy in `rounds` rounds (summed over the plans), and how the first round splits them
+    if n <= 1 or rounds == 0: return 0, None
+    best = (0, None)
+    for rocks in range(n, -1, -1): # (from the most rocks down, so ties go to rock-heavy splits)
+        for papers in range(n + 1 - rocks):
+            counts = (rocks, papers, n - rocks - papers)
+            if max(counts) == n: continue
+            value = n * round_gain(counts) + sum(best_split(count, rounds - 1)[0] for count in counts)
+            if value > best[0] + 1e-9: best = (value, counts)
+    return best
+
+def best_plans(n, rounds): # n plans of `rounds` moves that buy the most margin against the perfect counter-bot
+    plans = [[] for _ in range(n)]
+    def build(group, rounds_left): # group: plans the counter-bot can't tell apart yet
+        if rounds_left == 0: return
+        split = best_split(len(group), rounds_left)[1]
+        if split is None: # the counter-bot knows which plan this is by now, so the rest just cycles rock, paper, scissors
+            for p in group:
+                for _ in range(rounds_left): plans[p].append((plans[p][-1] + 1) % 3 if plans[p] else 0)
+            return
+        start = 0
+        for move, count in enumerate(split):
+            for p in group[start:start + count]: plans[p].append(move)
+            build(group[start:start + count], rounds_left - 1)
+            start += count
+    build(list(range(n)), rounds)
+    return plans
+
+# 20 Burst Bot
+# every 10 rounds, draws 3 random moves (27 possibilities) and loops them for those 10 rounds
+burst_bot = plan_bot([[a, b, c, a, b, c, a, b, c, a] for a in range(3) for b in range(3) for c in range(3)], "burst_bot")
+
+# 21 Jumpy De Bruijn Bot
+# loops through the order-3 de Bruijn string, but jumps to a random point in it (27 possibilities) every 10 rounds
+jumpy_de_bruijn_bot = plan_bot([[de_bruijn(3)[(start + i) % 27] for i in range(10)] for start in range(27)], "jumpy_de_bruijn_bot")
+
+# 22 Lopsided Bot
+# every 10 rounds, picks one of 27 ten-move plans designed to buy the most margin against a bot that knows the plans:
+# mostly rock with some scissors, so the counter-bot can never tell whether to go for the win (paper) or play safe (rock)
+lopsided_bot = plan_bot(best_plans(27, 10), "lopsided_bot")
+
+# 23 Moody Predator Bot
+# every 10 rounds, randomly becomes Favorite Bot, Habit Bot or Deja Vu Bot for the next 10 rounds (1 trit every 10 rounds)
+# (a cousin of the Moody Historian Bot idea in future_bots.py)
+@rationed(10, math.log2(3))
+@with_memory
+def moody_predator_bot(p1hist, p2hist, whoAmI, rng, memory): # 100% hist usage (rival's); de se knows which player it is
+    moves = [persona(p1hist, p2hist, whoAmI, rng) for persona in (favorite_bot, habit_bot, deja_vu_bot)] # (all of them keep up every round)
+    if len(p1hist) % 10 == 0: memory["mood"] = rng.randint(0, 2)
+    return moves[memory["mood"]]
+
 
 # Engine
 NUM_ROUNDS = 5000 # 10000
@@ -412,28 +527,41 @@ def aggregate_points(outcomes_1, exact_1, outcomes_2, exact_2): # a's expected p
 
 SCORINGS = ["PER-GAME", "AGGREGATE"]
 
+NUM_WORKERS = os.cpu_count() or 1 # how many matches to play at once, on separate processes
+
+MATCH_COMPETITORS = [] # the bots round_robin is playing (where the worker processes find them)
+
+def play_match(pair): # both games of the match between bots i and j: i is p1, then j is p1
+    i, j = pair
+    a = MATCH_COMPETITORS[i]; b = MATCH_COMPETITORS[j]
+    return i, j, expected_game(a, b), expected_game(b, a)
+
 def round_robin(competitors):
     # returns, for each scoring, a table of the row bot's expected points vs the column bot (0 to 1) and a table of
     # standard errors, a table of which matches were sampled rather than exact, and each bot's average bits of randomness per game
+    global MATCH_COMPETITORS
+    MATCH_COMPETITORS = competitors
     n = len(competitors)
     tables = {scoring: [[0] * n for _ in range(n)] for scoring in SCORINGS}
     errors = {scoring: [[0] * n for _ in range(n)] for scoring in SCORINGS}
     sampled = [[False] * n for _ in range(n)] # whether either game of the match was sampled
     bits = [0] * n
-    for i in range(n):
-        for j in range(i + 1, n):
-            a = competitors[i]; b = competitors[j]
-            outcomes_1, a_bits_1, b_bits_1, exact_1 = expected_game(a, b) # a is p1
-            outcomes_2, b_bits_2, a_bits_2, exact_2 = expected_game(b, a) # b is p1
-            a_points_1, error_1 = per_game_points(outcomes_1, exact_1)
-            b_points_2, error_2 = per_game_points(outcomes_2, exact_2)
-            results = {"PER-GAME": ((a_points_1 + (1 - b_points_2)) / 2, math.sqrt(error_1 ** 2 + error_2 ** 2) / 2),
-                       "AGGREGATE": aggregate_points(outcomes_1, exact_1, outcomes_2, exact_2)}
-            for scoring, (a_points, error) in results.items():
-                tables[scoring][i][j] = clamp(a_points); tables[scoring][j][i] = clamp(1 - a_points)
-                errors[scoring][i][j] = errors[scoring][j][i] = error
-            sampled[i][j] = sampled[j][i] = not (exact_1 and exact_2)
-            bits[i] += a_bits_1 + a_bits_2; bits[j] += b_bits_1 + b_bits_2
+    pairs = [(i, j) for i in range(n) for j in range(i + 1, n)]
+    if NUM_WORKERS > 1 and "fork" in multiprocessing.get_all_start_methods():
+        with multiprocessing.get_context("fork").Pool(NUM_WORKERS, initializer = random.seed) as pool: # (each process gets its own random seed)
+            matches = sorted(pool.imap_unordered(play_match, pairs)) # (sorted, so the totals don't depend on which match finished first)
+    else: # (Windows can't fork, so there the matches are played one at a time)
+        matches = map(play_match, pairs)
+    for i, j, (outcomes_1, a_bits_1, b_bits_1, exact_1), (outcomes_2, b_bits_2, a_bits_2, exact_2) in matches:
+        a_points_1, error_1 = per_game_points(outcomes_1, exact_1)
+        b_points_2, error_2 = per_game_points(outcomes_2, exact_2)
+        results = {"PER-GAME": ((a_points_1 + (1 - b_points_2)) / 2, math.sqrt(error_1 ** 2 + error_2 ** 2) / 2),
+                   "AGGREGATE": aggregate_points(outcomes_1, exact_1, outcomes_2, exact_2)}
+        for scoring, (a_points, error) in results.items():
+            tables[scoring][i][j] = clamp(a_points); tables[scoring][j][i] = clamp(1 - a_points)
+            errors[scoring][i][j] = errors[scoring][j][i] = error
+        sampled[i][j] = sampled[j][i] = not (exact_1 and exact_2)
+        bits[i] += a_bits_1 + a_bits_2; bits[j] += b_bits_1 + b_bits_2
     bits_per_game = [b / (2 * (n - 1)) for b in bits]
     return tables, errors, sampled, bits_per_game
 
@@ -450,7 +578,7 @@ if __name__ == "__main__":
     # tournament_competitors = [random_bot, constant_bot, random_throwback_bot, historian_bot, pattern_bot_1, pattern_bot_2, youll_remain_bot, youll_change_bot, three_cycle_bot]
     tournament_competitors = [random_bot, constant_bot, three_cycle_bot, pattern_bot_1, pattern_bot_2, random_throwback_bot, historian_bot, youll_remain_bot, youll_change_bot, youll_remain_if_won_else_change_bot,
                               de_bruijn_bot, battery_12_bot, favorite_bot, habit_bot, deja_vu_bot, overdue_bot, pi_bot,
-                              random_start_de_bruijn_bot, random_start_battery_12_bot]
+                              random_start_de_bruijn_bot, random_start_battery_12_bot, burst_bot, jumpy_de_bruijn_bot, lopsided_bot, moody_predator_bot]
     competitor_names = list(map(lambda x: x.__name__, tournament_competitors))
     print("COMPETITORS:")
     for number, name in enumerate(competitor_names, 1):
@@ -505,6 +633,10 @@ if __name__ == "__main__":
 #17 Pi Bot 20260929
 #18 Random Start De Bruijn Bot 20260929
 #19 Random Start Battery 12 Bot 20260929
+#20 Burst Bot 20260929
+#21 Jumpy De Bruijn Bot 20260929
+#22 Lopsided Bot 20260929
+#23 Moody Predator Bot 20260929
 
 #10 ??? unknown meta remain/change strat? maybe something like "if I'm losing, switch to my alter ego" thing
 
