@@ -86,7 +86,8 @@ def youll_change_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se 
     return (prev_rival_move - 1) % 3
 
 # 10 Bet You'll Stay The Same If You Won Otherwise Bet You'll Change Bot
-# (1 random, then) plays the move that will beat the move rival just played if rival just won, 
+# (1 random, then) plays the move that will beat the move rival just played if rival just won,
+# otherwise (draw or rival lost) plays the move that could lose to the move rival just played
 def youll_remain_if_won_else_change_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se knows which player it is
     if not p1hist:
         return random.randint(0,2)
@@ -102,7 +103,6 @@ NUM_ROUNDS = 5000 # 10000
 p1_wins = 0
 p2_wins = 0
 draws = 0
-print(f"NUM_ROUNDS: {NUM_ROUNDS}")
 
 def do_round(p1, p2, p1hist, p2hist):
     # print(p1hist)
@@ -163,20 +163,20 @@ def play_game(p1, p2):
   # big win for historian bot after it fails to gain any traction against the two pattern bots (although has different draw rates for each of them)
 # play_game(youll_remain_bot, constant_bot) # good sanity check
 # play_game(youll_change_bot, constant_bot) # lmao
-# play_game(youll_remain_bot, youll_change_bot) # p1 wins 66% of matches, p2 33% of matches; there are two equilibria that might happen of different rarity
+# play_game(youll_remain_bot, youll_change_bot) # p1 wins 33% of matches (if it wins round 1 it wins every round), p2 66% of matches (draw/p2-win alternation); there are two equilibria that might happen of different rarity
 # play_game(youll_remain_if_won_else_change_bot, youll_remain_bot)
 
 # Round Robin Tournament Engine
 
-def round_robin(competitors, score):
+def round_robin(competitors, score, win_table):
     i = 0
     j = 1
     while i < len(competitors):
         while j < len(competitors):
             winner = play_game(competitors[i], competitors[j])
-            if winner == 1: tournament_scores[i] += 1; win_table[i][j] += 1
-            elif winner == 2: tournament_scores[j] += 1; win_table[j][i] += 1
-            else: tournament_scores[i] += .5; tournament_scores[j] += .5; win_table[i][j] += .5; win_table[j][i] += .5
+            if winner == 1: score[i] += 1; win_table[i][j] += 1
+            elif winner == 2: score[j] += 1; win_table[j][i] += 1
+            else: score[i] += .5; score[j] += .5; win_table[i][j] += .5; win_table[j][i] += .5
             # print(tournament_scores)
             j += 1
         # print(j)
@@ -184,54 +184,56 @@ def round_robin(competitors, score):
         j = i + 1
     # print(i)
 
-def multi_round_robin(competitors, score, numRoundRobins):
+def multi_round_robin(competitors, score, win_table, numRoundRobins):
     i = 0
-    while i < NUM_ROUND_ROBINS:
-        round_robin(tournament_competitors, tournament_scores)
+    while i < numRoundRobins:
+        round_robin(competitors, score, win_table)
         i += 1
 
 
-# tournament_competitors = [random_bot, constant_bot, random_throwback_bot, historian_bot, pattern_bot_1, pattern_bot_2, youll_remain_bot, youll_change_bot, three_cycle_bot]
-tournament_competitors = [random_bot, constant_bot, three_cycle_bot, pattern_bot_1, pattern_bot_2, random_throwback_bot, historian_bot, youll_remain_bot, youll_change_bot, youll_remain_if_won_else_change_bot]
-tournament_scores = []
-for i in range(len(tournament_competitors)):
-    tournament_scores.append(0)
-competitor_names = list(map(lambda x: x.__name__, tournament_competitors))
-win_table = []
-i = 0
-j = 0
-while i < len(tournament_competitors):
-    win_table.append([])
-    while j < len(tournament_competitors):
-        win_table[i].append(0)
-        j += 1
-    i += 1
+if __name__ == "__main__":
+    print(f"NUM_ROUNDS: {NUM_ROUNDS}")
+    # tournament_competitors = [random_bot, constant_bot, random_throwback_bot, historian_bot, pattern_bot_1, pattern_bot_2, youll_remain_bot, youll_change_bot, three_cycle_bot]
+    tournament_competitors = [random_bot, constant_bot, three_cycle_bot, pattern_bot_1, pattern_bot_2, random_throwback_bot, historian_bot, youll_remain_bot, youll_change_bot, youll_remain_if_won_else_change_bot]
+    tournament_scores = []
+    for i in range(len(tournament_competitors)):
+        tournament_scores.append(0)
+    competitor_names = list(map(lambda x: x.__name__, tournament_competitors))
+    win_table = []
+    i = 0
     j = 0
+    while i < len(tournament_competitors):
+        win_table.append([])
+        while j < len(tournament_competitors):
+            win_table[i].append(0)
+            j += 1
+        i += 1
+        j = 0
 
-NUM_ROUND_ROBINS = 20000
-print(f"NUM ROUND ROBINS: {NUM_ROUND_ROBINS}")
-print(f"COMPETITORS: {competitor_names}")
-multi_round_robin(tournament_competitors, tournament_scores, NUM_ROUND_ROBINS)
-print("~~ Tournament Complete ~~")
-print(tournament_scores)
-normalized_scores = list(map(lambda x: x/NUM_ROUND_ROBINS, tournament_scores))
-print(normalized_scores)
-competitor_objects = []
-for item in zip(tournament_competitors, normalized_scores, competitor_names):
-    competitor_objects.append({"bot": item[0], "score": item[1], "name": item[2]})
-competitor_objects.sort(key = lambda x: x['score'], reverse = True) # sort by score greatest to least
-current_rank = 1
-for competitor in competitor_objects:
-    print(f"RANK {current_rank}: {competitor['name']}, WITH SCORE: {competitor['score']}")
-    current_rank += 1
-i = 0; j = 0
-while i < len(win_table):
-    print("[", end="")
-    while j < len(win_table):
-        print(f"{win_table[i][j]},".ljust(7), end="")
-        j += 1
-    print("]")
-    j = 0; i += 1
+    NUM_ROUND_ROBINS = 20000
+    print(f"NUM ROUND ROBINS: {NUM_ROUND_ROBINS}")
+    print(f"COMPETITORS: {competitor_names}")
+    multi_round_robin(tournament_competitors, tournament_scores, win_table, NUM_ROUND_ROBINS)
+    print("~~ Tournament Complete ~~")
+    print(tournament_scores)
+    normalized_scores = list(map(lambda x: x/NUM_ROUND_ROBINS, tournament_scores))
+    print(normalized_scores)
+    competitor_objects = []
+    for item in zip(tournament_competitors, normalized_scores, competitor_names):
+        competitor_objects.append({"bot": item[0], "score": item[1], "name": item[2]})
+    competitor_objects.sort(key = lambda x: x['score'], reverse = True) # sort by score greatest to least
+    current_rank = 1
+    for competitor in competitor_objects:
+        print(f"RANK {current_rank}: {competitor['name']}, WITH SCORE: {competitor['score']}")
+        current_rank += 1
+    i = 0; j = 0
+    while i < len(win_table):
+        print("[", end="")
+        while j < len(win_table):
+            print(f"{win_table[i][j]},".ljust(7), end="")
+            j += 1
+        print("]")
+        j = 0; i += 1
 
 # Botdex
 #1 Random Bot 20230120

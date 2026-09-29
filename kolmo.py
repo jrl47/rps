@@ -105,17 +105,6 @@ def f000110():
             result += "0"
     return result
 
-def f000110_alt():
-    result = ""; length = 6
-    while len(result) < length:
-        if len(result) < 2:
-            result += "0"
-        elif len(result) < 4:
-            result += "1"
-        else:
-            result += "0"
-    return result
-
 print(f0()) # score: 1 (unless adding the while loop is a "cost")
 print(f1()) # score: 1 (unless adding the while loop is a "cost")
 print(f00()) # score: 1
@@ -151,7 +140,7 @@ print(f000110()) # score: 3 b *im not sure if a 1-bit state lets this one avoid 
 # 0100 | 3? a
 # 0010 | 3? a
 # 1011 | 3? a
-# 0100 | 3? a
+# 1101 | 3? a
 # 0110 | 3? b
 # 1001 | 3? b
 # with strings of length 4 it seems the highest complexity is 3 maybe
