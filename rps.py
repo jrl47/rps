@@ -1,30 +1,32 @@
+import math
 import random
+from fractions import Fraction
 numbers_to_moves = {0: "rock", 1:"paper", 2:"scissors"}
 
 # 1 Random Bot
 # plays random moves
-def random_bot(p1hist, p2hist, whoAmI): # no hist usage
-    return random.randint(0,2)
+def random_bot(p1hist, p2hist, whoAmI, rng): # no hist usage
+    return rng.randint(0,2)
 
 # 2 Constant Bot
 # randomly picks a move to play forever
-def constant_bot(p1hist, p2hist, whoAmI): # no hist usage; de se & random just for random first move as root of pattern
+def constant_bot(p1hist, p2hist, whoAmI, rng): # no hist usage; de se & random just for random first move as root of pattern
     if not p1hist:
-        return random.randint(0,2)
+        return rng.randint(0,2)
     return(p1hist[0] if whoAmI == 1 else p2hist[0])
 
 # 3 3-Cycle Bot
 # plays a random 3-permutation aka 3-cycle; in this case, rock, paper, scissors (where which move comes first is random)
-def three_cycle_bot(p1hist, p2hist, whoAmI): # only uses hist length; de se & random just for random first move as root of pattern
+def three_cycle_bot(p1hist, p2hist, whoAmI, rng): # only uses hist length; de se & random just for random first move as root of pattern
     if not p1hist:
-        return random.randint(0,2)
+        return rng.randint(0,2)
     return((p1hist[0] + len(p1hist)) % 3 if whoAmI == 1 else (p2hist[0] + len(p1hist)) % 3)
 
 # 4 Pattern Bot 1
 # plays rock, rock, rock, paper, paper, rock
-def pattern_bot_1(p1hist, p2hist, whoAmI): # no hist usage; de se & random just for random first move as root of pattern
+def pattern_bot_1(p1hist, p2hist, whoAmI, rng): # no hist usage; de se & random just for random first move as root of pattern
     if not p1hist:
-        return random.randint(0,2)
+        return rng.randint(0,2)
     base = p1hist[0] if whoAmI == 1 else p2hist[0]
     match len(p1hist) % 6:
         case 0: return (base) % 3
@@ -36,9 +38,9 @@ def pattern_bot_1(p1hist, p2hist, whoAmI): # no hist usage; de se & random just 
 
 # 5 Pattern Bot 2
 # plays scissors, rock, rock, paper, paper, rock 200110 = 011221
-def pattern_bot_2(p1hist, p2hist, whoAmI): # no hist usage; de se & random just for random first move as root of pattern
+def pattern_bot_2(p1hist, p2hist, whoAmI, rng): # no hist usage; de se & random just for random first move as root of pattern
     if not p1hist:
-        return random.randint(0,2)
+        return rng.randint(0,2)
     base = p1hist[0] if whoAmI == 1 else p2hist[0]
     match len(p1hist) % 6:
         case 0: return (base) % 3
@@ -50,19 +52,19 @@ def pattern_bot_2(p1hist, p2hist, whoAmI): # no hist usage; de se & random just 
 
 # 6 Random Throwback Bot
 # after a random move, chooses a random player and a random past round and plays the historical move
-def random_throwback_bot(p1hist, p2hist, whoAmI): # 100% hist usage
+def random_throwback_bot(p1hist, p2hist, whoAmI, rng): # 100% hist usage
     if not p1hist:
-        return random.randint(0,2)
-    if (random.randint(0,1) == 0):
-        return random.choice(p1hist)
+        return rng.randint(0,2)
+    if (rng.randint(0,1) == 0):
+        return rng.choice(p1hist)
     else:
-        return random.choice(p2hist)
+        return rng.choice(p2hist)
 
 # 7 Historian Bot
 # after a random move, plays p1's first move, then p2's first move, then p1's second move, then p2's second move...
-def historian_bot(p1hist, p2hist, whoAmI): # 100% hist usage; random just for first move
+def historian_bot(p1hist, p2hist, whoAmI, rng): # 100% hist usage; random just for first move
     if not p1hist:
-        return random.randint(0,2)
+        return rng.randint(0,2)
     turn = len(p1hist) - 1 # minus one to offset the very first turn where a random move is played
     if turn % 2 == 0:
         return p1hist[turn // 2]
@@ -71,26 +73,26 @@ def historian_bot(p1hist, p2hist, whoAmI): # 100% hist usage; random just for fi
 
 # 8 Bet You'll Stay The Same Bot
 # (1 random, then) plays the move that will beat the move rival just played
-def youll_remain_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se knows which player it is
+def youll_remain_bot(p1hist, p2hist, whoAmI, rng): # most-recent-1 hist usage; de se knows which player it is
     if not p1hist:
-        return random.randint(0,2)
+        return rng.randint(0,2)
     prev_rival_move = p2hist[len(p1hist)-1] if whoAmI == 1 else p1hist[len(p1hist)-1]
     return (prev_rival_move + 1) % 3
 
 # 9 Bet You'll Change Bot
 # (1 random, then) plays the move that could lose to the move rival just played (and so cant lose if you change)
-def youll_change_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se knows which player it is
+def youll_change_bot(p1hist, p2hist, whoAmI, rng): # most-recent-1 hist usage; de se knows which player it is
     if not p1hist:
-        return random.randint(0,2)
+        return rng.randint(0,2)
     prev_rival_move = p2hist[len(p1hist)-1] if whoAmI == 1 else p1hist[len(p1hist)-1]
     return (prev_rival_move - 1) % 3
 
 # 10 Bet You'll Stay The Same If You Won Otherwise Bet You'll Change Bot
 # (1 random, then) plays the move that will beat the move rival just played if rival just won,
 # otherwise (draw or rival lost) plays the move that could lose to the move rival just played
-def youll_remain_if_won_else_change_bot(p1hist, p2hist, whoAmI): # most-recent-1 hist usage; de se knows which player it is
+def youll_remain_if_won_else_change_bot(p1hist, p2hist, whoAmI, rng): # most-recent-1 hist usage; de se knows which player it is
     if not p1hist:
-        return random.randint(0,2)
+        return rng.randint(0,2)
     prev_rival_move = p2hist[len(p1hist)-1] if whoAmI == 1 else p1hist[len(p1hist)-1]
     prev_self_move = p1hist[len(p1hist)-1] if whoAmI == 1 else p2hist[len(p1hist)-1]
     if (prev_rival_move - prev_self_move) % 3 == 1: # if rival won; cf. do_round code
@@ -100,53 +102,62 @@ def youll_remain_if_won_else_change_bot(p1hist, p2hist, whoAmI): # most-recent-1
 
 # Engine
 NUM_ROUNDS = 5000 # 10000
-p1_wins = 0
-p2_wins = 0
-draws = 0
+MAX_BRANCHES = 4096 # a game is computed exactly if its random draws have at most this many possible sequences (4096 = 12 bits)
+NUM_SAMPLES = 200 # otherwise it's estimated from this many sampled games
 
-def do_round(p1, p2, p1hist, p2hist):
+# Randomness
+# Bots get all their randomness from rng, never from the random module directly. Every draw goes onto the game's Tape,
+# so the engine can either sample a game, or replay it once for every possible sequence of draws and get exact results.
+# rng also counts the bits of randomness each bot uses.
+
+class TooManyBranches(Exception):
+    pass
+
+class Tape:
+    def __init__(self, script=None):
+        self.script = script # draws to replay when enumerating (any draw past the end is 0); None means sample
+        self.draws = [] # (value, n) for each draw made this game
+        self.branches = 1 # when enumerating, this path's probability is 1 / branches
+    def draw(self, n):
+        if self.script is None:
+            value = random.randrange(n)
+        else:
+            value = self.script[len(self.draws)] if len(self.draws) < len(self.script) else 0
+            self.branches *= n
+            if self.branches > MAX_BRANCHES: raise TooManyBranches
+        self.draws.append((value, n))
+        return value
+
+class Rng:
+    def __init__(self, tape):
+        self.tape = tape
+        self.bits = 0.0
+    def randint(self, a, b): # like random.randint: a <= result <= b
+        self.bits += math.log2(b - a + 1)
+        return a + self.tape.draw(b - a + 1)
+    def choice(self, seq): # like random.choice
+        self.bits += math.log2(len(seq))
+        return seq[self.tape.draw(len(seq))]
+
+def play_game(p1, p2, tape=None): # returns p1's points (1 win, .5 tie, 0 loss) and the bits of randomness each bot used
+    if tape is None: tape = Tape()
+    rng1 = Rng(tape); rng2 = Rng(tape)
+    p1hist = []; p2hist = []
+    margin = 0
+    for _ in range(NUM_ROUNDS):
+        p1_move = p1(p1hist, p2hist, 1, rng1); p2_move = p2(p1hist, p2hist, 2, rng2)
+        outcome = (p1_move - p2_move) % 3
+        p1hist.append(p1_move)
+        p2hist.append(p2_move)
+        if outcome == 1: margin += 1
+        elif outcome == 2: margin -= 1
+    if margin > 1: points = 1 # you have to win by more than 1
+    elif margin < -1: points = 0
+    else: points = .5
+    # print(f"{p1.__name__} vs {p2.__name__}: p1 margin {margin}")
     # print(p1hist)
     # print(p2hist)
-    p1_move = p1(p1hist, p2hist, 1); p2_move = p2(p1hist, p2hist, 2)
-    outcome = (p1_move - p2_move) % 3
-    p1hist.append(p1_move)
-    p2hist.append(p2_move)
-    if outcome == 1:
-        global p1_wins; p1_wins += 1 #print(" p1 wins!")
-    if outcome == 2:
-        global p2_wins; p2_wins += 1 #print(" p2 wins!")
-    if outcome == 0:
-        global draws; draws += 1 #print(" draw!")
-
-def play_game(p1, p2):
-    global NUM_ROUNDS
-    p1_game_history = []
-    p2_game_history = []
-    global p1_wins
-    global p2_wins
-    global draws
-    # print()
-    # print(f"  ~ {p1.__name__} ___vs___ {p2.__name__} ~")
-    # print(f"                    ~ Match Length: {NUM_ROUNDS} Rounds ~")
-    round = 0
-    while round < NUM_ROUNDS:
-        do_round(p1, p2, p1_game_history, p2_game_history)
-        round += 1
-    winner = -1
-    if p1_wins - 1 > p2_wins: winner = 1; #print("PLAYER 1 WINS") # you have to win by more than 1
-    elif p2_wins - 1 > p1_wins: winner = 2; #print("PLAYER 2 WINS") # you have to win by more than 1
-    else: winner = 0; #print ("IT'S A TIE! DRAW")
-    # print("~~ Match Complete ~~")
-    # print(f"PLAYER 1 WIN % {(p1_wins/NUM_ROUNDS)*100}")
-    # print(f"PLAYER 2 WIN % {(p2_wins/NUM_ROUNDS)*100}")
-    # print(f"DRAW % {(draws/NUM_ROUNDS)*100}")
-    # print("GAME HISTORY FOR P1 and P2:")
-    # print(p1_game_history)
-    # print(p2_game_history)
-    p1_wins = 0
-    p2_wins = 0
-    draws = 0
-    return winner
+    return points, rng1.bits, rng2.bits
 
 # play_game(random_bot, constant_bot)
 # play_game(random_bot, historian_bot)
@@ -166,74 +177,84 @@ def play_game(p1, p2):
 # play_game(youll_remain_bot, youll_change_bot) # p1 wins 33% of matches (if it wins round 1 it wins every round), p2 66% of matches (draw/p2-win alternation); there are two equilibria that might happen of different rarity
 # play_game(youll_remain_if_won_else_change_bot, youll_remain_bot)
 
+# Exact & Sampled Games
+
+def exact_game(p1, p2): # p1's exact expected points and each bot's expected bits, found by playing every possible sequence of draws
+    points = p1_bits = p2_bits = 0
+    script = []
+    while True: # (each path has probability >= 1 / MAX_BRANCHES, so there are at most MAX_BRANCHES paths)
+        tape = Tape(script)
+        random_state = random.getstate()
+        result = play_game(p1, p2, tape)
+        if random.getstate() != random_state: # a bot used the random module, so this wouldn't really be exact
+            raise RuntimeError(f"{p1.__name__} or {p2.__name__} uses the random module; bots must get randomness from rng")
+        chance = Fraction(1, tape.branches)
+        points += chance * Fraction(result[0]); p1_bits += float(chance) * result[1]; p2_bits += float(chance) * result[2]
+        # next sequence of draws, like an odometer: bump the last draw that isn't at its max, and drop everything after it
+        draws = tape.draws
+        while draws and draws[-1][0] == draws[-1][1] - 1:
+            draws.pop()
+        if not draws: break
+        script = [value for value, n in draws[:-1]] + [draws[-1][0] + 1]
+    return float(points), p1_bits, p2_bits, 0.0
+
+def sampled_game(p1, p2): # same as exact_game but estimated, plus the standard error of p1's points
+    results = [play_game(p1, p2) for _ in range(NUM_SAMPLES)]
+    points = sum(r[0] for r in results) / NUM_SAMPLES
+    variance = sum((r[0] - points) ** 2 for r in results) / max(NUM_SAMPLES - 1, 1)
+    return points, sum(r[1] for r in results) / NUM_SAMPLES, sum(r[2] for r in results) / NUM_SAMPLES, math.sqrt(variance / NUM_SAMPLES)
+
+def expected_game(p1, p2):
+    try:
+        return exact_game(p1, p2)
+    except TooManyBranches:
+        return sampled_game(p1, p2)
+
 # Round Robin Tournament Engine
 
-def round_robin(competitors, score, win_table):
-    i = 0
-    j = 1
-    while i < len(competitors):
-        while j < len(competitors):
-            winner = play_game(competitors[i], competitors[j])
-            if winner == 1: score[i] += 1; win_table[i][j] += 1
-            elif winner == 2: score[j] += 1; win_table[j][i] += 1
-            else: score[i] += .5; score[j] += .5; win_table[i][j] += .5; win_table[j][i] += .5
-            # print(tournament_scores)
-            j += 1
-        # print(j)
-        i += 1
-        j = i + 1
-    # print(i)
-
-def multi_round_robin(competitors, score, win_table, numRoundRobins):
-    i = 0
-    while i < numRoundRobins:
-        round_robin(competitors, score, win_table)
-        i += 1
+def round_robin(competitors):
+    # every match is a pair of games with the seats swapped, each game worth half a point
+    n = len(competitors)
+    win_table = [[0] * n for _ in range(n)] # expected points of row bot vs column bot (0 to 1)
+    error_table = [[0] * n for _ in range(n)] # standard error of each entry; 0 means exact
+    bits = [0] * n
+    for i in range(n):
+        for j in range(i + 1, n):
+            a = competitors[i]; b = competitors[j]
+            a_points_1, a_bits_1, b_bits_1, error_1 = expected_game(a, b) # a is p1
+            b_points_2, b_bits_2, a_bits_2, error_2 = expected_game(b, a) # b is p1
+            win_table[i][j] = (a_points_1 + (1 - b_points_2)) / 2
+            win_table[j][i] = 1 - win_table[i][j]
+            error_table[i][j] = error_table[j][i] = math.sqrt(error_1 ** 2 + error_2 ** 2) / 2
+            bits[i] += a_bits_1 + a_bits_2; bits[j] += b_bits_1 + b_bits_2
+    bits_per_game = [b / (2 * (n - 1)) for b in bits]
+    return win_table, error_table, bits_per_game
 
 
 if __name__ == "__main__":
     print(f"NUM_ROUNDS: {NUM_ROUNDS}")
+    print(f"MAX_BRANCHES: {MAX_BRANCHES}, NUM_SAMPLES: {NUM_SAMPLES}")
     # tournament_competitors = [random_bot, constant_bot, random_throwback_bot, historian_bot, pattern_bot_1, pattern_bot_2, youll_remain_bot, youll_change_bot, three_cycle_bot]
     tournament_competitors = [random_bot, constant_bot, three_cycle_bot, pattern_bot_1, pattern_bot_2, random_throwback_bot, historian_bot, youll_remain_bot, youll_change_bot, youll_remain_if_won_else_change_bot]
-    tournament_scores = []
-    for i in range(len(tournament_competitors)):
-        tournament_scores.append(0)
     competitor_names = list(map(lambda x: x.__name__, tournament_competitors))
-    win_table = []
-    i = 0
-    j = 0
-    while i < len(tournament_competitors):
-        win_table.append([])
-        while j < len(tournament_competitors):
-            win_table[i].append(0)
-            j += 1
-        i += 1
-        j = 0
-
-    NUM_ROUND_ROBINS = 20000
-    print(f"NUM ROUND ROBINS: {NUM_ROUND_ROBINS}")
     print(f"COMPETITORS: {competitor_names}")
-    multi_round_robin(tournament_competitors, tournament_scores, win_table, NUM_ROUND_ROBINS)
+    win_table, error_table, bits_per_game = round_robin(tournament_competitors)
     print("~~ Tournament Complete ~~")
-    print(tournament_scores)
-    normalized_scores = list(map(lambda x: x/NUM_ROUND_ROBINS, tournament_scores))
-    print(normalized_scores)
-    competitor_objects = []
-    for item in zip(tournament_competitors, normalized_scores, competitor_names):
-        competitor_objects.append({"bot": item[0], "score": item[1], "name": item[2]})
-    competitor_objects.sort(key = lambda x: x['score'], reverse = True) # sort by score greatest to least
+    scores = [sum(row) for row in win_table]
+    errors = [math.sqrt(sum(e ** 2 for e in row)) for row in error_table]
+    ranking = sorted(zip(scores, errors, competitor_names, bits_per_game), key = lambda x: x[0], reverse = True) # sort by score greatest to least
     current_rank = 1
-    for competitor in competitor_objects:
-        print(f"RANK {current_rank}: {competitor['name']}, WITH SCORE: {competitor['score']}")
+    for score, error, name, bits in ranking:
+        score_text = f"{score:.4f}" if error == 0 else f"{score:.4f} (± {error:.4f})"
+        print(f"RANK {current_rank}: {name}, WITH SCORE: {score_text}, BITS OF RANDOMNESS PER GAME: {bits:.2f}")
         current_rank += 1
-    i = 0; j = 0
-    while i < len(win_table):
+    print("WIN TABLE (row's expected points vs column; ~ means sampled, otherwise exact)")
+    for i in range(len(win_table)):
         print("[", end="")
-        while j < len(win_table):
-            print(f"{win_table[i][j]},".ljust(7), end="")
-            j += 1
+        for j in range(len(win_table)):
+            cell = "--" if i == j else ("~" if error_table[i][j] else "") + f"{win_table[i][j]:.3f}"
+            print(f"{cell},".ljust(8), end="")
         print("]")
-        j = 0; i += 1
 
 # Botdex
 #1 Random Bot 20230120
@@ -251,7 +272,7 @@ if __name__ == "__main__":
 
 
 # De Se Bot Template
-# def de_se_bot(p1hist, p2hist, whoAmI): # de se knows which player it is
+# def de_se_bot(p1hist, p2hist, whoAmI, rng): # de se knows which player it is
 #     if (whoAmI == 1): 
 #         #
 #     else: #luigi
