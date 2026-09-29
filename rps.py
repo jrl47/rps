@@ -101,11 +101,44 @@ def youll_remain_if_won_else_change_bot(p1hist, p2hist, whoAmI, rng): # most-rec
     else:
         return (prev_rival_move - 1) % 3 # same as youll_change
 
+# Memory
+# A bot decorated with @with_memory gets a fifth argument, memory: a dict that lasts for one game (one per seat).
+# It's only for keeping track of things the bot has worked out from the history (or drawn from rng) so it doesn't redo
+# them every move, so the bot still behaves as a function of the history and its draws.
+def with_memory(bot):
+    memories = {}
+    @functools.wraps(bot)
+    def bot_with_memory(p1hist, p2hist, whoAmI, rng):
+        if not p1hist or whoAmI not in memories: memories[whoAmI] = {} # new game
+        return bot(p1hist, p2hist, whoAmI, rng, memories[whoAmI])
+    return bot_with_memory
+
 # String Bots
-# loop through a fixed string of moves forever: a sort of poor man's randomness, with no rng at all
-def string_bot(moves, name): # only uses hist length
-    def bot(p1hist, p2hist, whoAmI, rng):
-        return moves[len(p1hist) % len(moves)]
+# loop through a fixed string of moves forever: a sort of poor man's randomness
+# with random_start, the bot starts at a random point in the string, which costs log2(len(moves)) bits of randomness;
+# otherwise it uses no randomness at all
+def string_bot(moves, name, random_start=False): # only uses hist length
+    @with_memory
+    def bot(p1hist, p2hist, whoAmI, rng, memory):
+        if "start" not in memory: memory["start"] = rng.randint(0, len(moves) - 1) if random_start else 0
+        return moves[(memory["start"] + len(p1hist)) % len(moves)]
+    bot.__name__ = name
+    return bot
+
+# the perfect counter-bot to string_bot(moves, random_start=...), for experiments: it knows the string and how the start
+# is chosen, works out which starts fit the rival's moves so far, and plays whatever does best against where they lead next
+def string_counter_bot(moves, name, random_start=False):
+    @with_memory
+    def bot(p1hist, p2hist, whoAmI, rng, memory):
+        rival_hist = p2hist if whoAmI == 1 else p1hist
+        starts = memory.setdefault("starts", list(range(len(moves))) if random_start else [0])
+        for t in range(memory.get("seen", 0), len(rival_hist)):
+            starts[:] = [s for s in starts if moves[(s + t) % len(moves)] == rival_hist[t]]
+        memory["seen"] = len(rival_hist)
+        chances = [0, 0, 0] # how many of the starts that fit lead to each next move
+        for s in starts:
+            chances[moves[(s + len(rival_hist)) % len(moves)]] += 1
+        return max(range(3), key = lambda m: chances[(m - 1) % 3] - chances[(m + 1) % 3]) # beats the most, loses to the fewest
     bot.__name__ = name
     return bot
 
@@ -129,19 +162,8 @@ de_bruijn_bot = string_bot(de_bruijn(3), "de_bruijn_bot")
 
 # 12 Battery 12 Bot
 # loops through an arbitrary 12-move string (drawn at random once, when the bot was written)
-battery_12_bot = string_bot([2, 2, 2, 1, 1, 0, 1, 1, 2, 1, 0, 0], "battery_12_bot")
-
-# Memory
-# A bot decorated with @with_memory gets a fifth argument, memory: a dict that lasts for one game (one per seat).
-# It's only for keeping track of things worked out from the history so the bot doesn't redo them every move,
-# so the bot still behaves as a function of the history.
-def with_memory(bot):
-    memories = {}
-    @functools.wraps(bot)
-    def bot_with_memory(p1hist, p2hist, whoAmI, rng):
-        if not p1hist or whoAmI not in memories: memories[whoAmI] = {} # new game
-        return bot(p1hist, p2hist, whoAmI, rng, memories[whoAmI])
-    return bot_with_memory
+BATTERY_12 = [2, 2, 2, 1, 1, 0, 1, 1, 2, 1, 0, 0]
+battery_12_bot = string_bot(BATTERY_12, "battery_12_bot")
 
 # 13 Favorite Bot
 # bets the rival will play their most common move so far, and plays what beats it (ties go to rock, so it opens with paper)
@@ -190,6 +212,55 @@ def deja_vu_bot(p1hist, p2hist, whoAmI, rng, memory): # 100% hist usage (rival's
         guess = int(seen[position])
     if guess is None: return 0
     return (guess + 1) % 3
+
+# 16 Overdue Bot
+# the mirror image of Habit Bot: bets the rival will play whatever they've *least* often played after their last two moves
+# (ties go to the move that's gone longest without following them), and plays what beats it. That's the gambler's fallacy,
+# which is a fallacy against random moves, but not against a string that's balanced by design, like a de Bruijn string
+# (if those two moves haven't come up before, it bets on the rival's least played move overall)
+@with_memory
+def overdue_bot(p1hist, p2hist, whoAmI, rng, memory): # 100% hist usage (rival's); de se knows which player it is
+    rival_hist = p2hist if whoAmI == 1 else p1hist
+    stats = memory.setdefault("stats", {}) # the rival's two moves (or () for overall) -> (times each move followed, when each last did)
+    for t in range(memory.get("seen", 0), len(rival_hist)):
+        for context in [()] + ([tuple(rival_hist[t - 2:t])] if t >= 2 else []):
+            counts, last = stats.setdefault(context, ([0, 0, 0], [-1, -1, -1]))
+            counts[rival_hist[t]] += 1; last[rival_hist[t]] = t
+    memory["seen"] = len(rival_hist)
+    counts, last = stats.get(tuple(rival_hist[-2:]), stats.get((), ([0, 0, 0], [-1, -1, -1])))
+    guess = min(range(3), key = lambda m: (counts[m], last[m]))
+    return (guess + 1) % 3
+
+# 17 Pi Bot
+# plays the digits of pi in base 3 (1, 0, 0, 1, 0, 2, 1, 1, 0, 1, 2, ...): about as simple to describe as a string that
+# never repeats gets (low kolmogorov complexity), and it never loops
+def ternary_pi(n): # the first n digits of pi in base 3 (10.0102110122... in base 3), from Machin's formula in whole numbers
+    scale = 3 ** (n + 10) # 10 extra digits to absorb rounding
+    def arctan_of_inverse(x): # arctan(1/x) * scale
+        total = 0; power = scale // x; k = 0
+        while power:
+            total += (-1) ** k * (power // (2 * k + 1))
+            power //= x * x; k += 1
+        return total
+    pi = (16 * arctan_of_inverse(5) - 4 * arctan_of_inverse(239)) // 3 ** 12 # pi * 3**(n - 2), which has n digits
+    digits = []
+    for _ in range(n):
+        pi, digit = divmod(pi, 3)
+        digits.append(digit)
+    return digits[::-1]
+
+PI_DIGITS = [] # worked out as far as needed
+def pi_bot(p1hist, p2hist, whoAmI, rng): # only uses hist length
+    if len(p1hist) >= len(PI_DIGITS): PI_DIGITS[:] = ternary_pi(2 * len(p1hist) + 1000)
+    return PI_DIGITS[len(p1hist)]
+
+# 18 Random Start De Bruijn Bot
+# De Bruijn Bot, but it starts at a random point in its string (log2(27) = 4.75 bits of randomness)
+random_start_de_bruijn_bot = string_bot(de_bruijn(3), "random_start_de_bruijn_bot", random_start = True)
+
+# 19 Random Start Battery 12 Bot
+# Battery 12 Bot, but it starts at a random point in its string (log2(12) = 3.58 bits of randomness)
+random_start_battery_12_bot = string_bot(BATTERY_12, "random_start_battery_12_bot", random_start = True)
 
 # Engine
 NUM_ROUNDS = 5000 # 10000
@@ -378,7 +449,8 @@ if __name__ == "__main__":
     print(f"MAX_BRANCHES: {MAX_BRANCHES}, NUM_SAMPLES: {NUM_SAMPLES}")
     # tournament_competitors = [random_bot, constant_bot, random_throwback_bot, historian_bot, pattern_bot_1, pattern_bot_2, youll_remain_bot, youll_change_bot, three_cycle_bot]
     tournament_competitors = [random_bot, constant_bot, three_cycle_bot, pattern_bot_1, pattern_bot_2, random_throwback_bot, historian_bot, youll_remain_bot, youll_change_bot, youll_remain_if_won_else_change_bot,
-                              de_bruijn_bot, battery_12_bot, favorite_bot, habit_bot, deja_vu_bot]
+                              de_bruijn_bot, battery_12_bot, favorite_bot, habit_bot, deja_vu_bot, overdue_bot, pi_bot,
+                              random_start_de_bruijn_bot, random_start_battery_12_bot]
     competitor_names = list(map(lambda x: x.__name__, tournament_competitors))
     print("COMPETITORS:")
     for number, name in enumerate(competitor_names, 1):
@@ -429,6 +501,10 @@ if __name__ == "__main__":
 #13 Favorite Bot 20260929
 #14 Habit Bot 20260929
 #15 Deja Vu Bot 20260929
+#16 Overdue Bot 20260929
+#17 Pi Bot 20260929
+#18 Random Start De Bruijn Bot 20260929
+#19 Random Start Battery 12 Bot 20260929
 
 #10 ??? unknown meta remain/change strat? maybe something like "if I'm losing, switch to my alter ego" thing
 

@@ -9,9 +9,9 @@ A bot is a function `bot(p1hist, p2hist, whoAmI, rng)` that returns 0 (rock), 1 
 - `whoAmI`: which seat the bot is in, 1 or 2
 - `rng`: the bot's only source of randomness, via `rng.randint(a, b)` and `rng.choice(seq)`. Don't use the `random` module directly: the engine needs to see every draw (and will complain if a bot uses `random` in an exact game).
 
-A bot decorated with `@with_memory` also gets a fifth argument, `memory`: a dict that lasts for one game. It's only for keeping track of things worked out from the history so the bot doesn't redo them every move (see the predator bots).
+A bot decorated with `@with_memory` also gets a fifth argument, `memory`: a dict that lasts for one game. It's only for keeping track of things the bot has worked out from the history (or drawn from `rng`) so it doesn't redo them every move (see the predator bots).
 
-`string_bot(moves, name)` makes a bot that loops through a fixed list of moves.
+`string_bot(moves, name)` makes a bot that loops through a fixed list of moves. With `random_start=True` it starts at a random point in the list, which costs log2(len(moves)) bits of randomness. `string_counter_bot(moves, name, random_start)` is the perfect counter-bot to it: it knows the string and how the start is chosen, and works out where the string bot is.
 
 ## Tournament
 - Every match is two games of `NUM_ROUNDS` rounds with the seats swapped. It's scored two ways:
@@ -23,4 +23,7 @@ A bot decorated with `@with_memory` also gets a fifth argument, `memory`: a dict
 - The results also report how many bits of randomness each bot used per game, and which matchups the two scorings disagree on.
 
 ## Experiments
-- `python3 string_experiment.py`: string bots (de Bruijn strings vs arbitrary strings, at lengths 3 to 6561) against the predator bots.
+- `python3 string_experiment.py` (about 1.5 minutes):
+  1. string bots (de Bruijn strings vs arbitrary strings, at lengths 3 to 6561, plus `pi_bot`) against the predator bots
+  2. how much margin a random start buys a string bot against its perfect counter-bot
+  3. the string of each length (3, 6, 9) whose random start buys the most, found by checking every string
