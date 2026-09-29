@@ -94,7 +94,7 @@ def f011010():
             state0 = (state0 + 1) % 2
     return result
 
-def f000110():
+def f001100():
     result = ""; length = 6
     while len(result) < length:
         if len(result) < 2:
@@ -116,7 +116,7 @@ print(f0010()) # score: 3   a
 print(f01001()) # score: 3  a
 print(f00101()) # score: 3  a
 print(f011010()) # score: 3 a
-print(f000110()) # score: 3 b *im not sure if a 1-bit state lets this one avoid 3 if-branches! arguably more complex
+print(f001100()) # score: 3 b *im not sure if a 1-bit state lets this one avoid 3 if-branches! arguably more complex
 
 # postulates:
 # 000 | 1
