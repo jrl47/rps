@@ -32,4 +32,5 @@ A bot decorated with `@rationed(every, bits)` may only draw randomness on rounds
   1. string bots (de Bruijn strings vs arbitrary strings, at lengths 3 to 6561, plus `pi_bot`) against the predator bots
   2. how much margin a random start buys a string bot against its perfect counter-bot
   3. the string of each length (3, 6, 9) whose random start buys the most, found by checking every string
+  4. longer strings (up to 81) whose random start buys as much as any bot possibly could with that much randomness, found by search (`python3 string_experiment.py search LENGTH SECONDS` to search yourself)
 - `python3 rationing_experiment.py` (a few seconds): how much a bot can protect itself against the perfect counter-bot when its randomness is rationed
