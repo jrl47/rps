@@ -9,7 +9,8 @@ import random
 import rps
 from rps import (mixture_bot, mixture_counter_bot, lookahead_counter_bot, fixed_start, plan_bot, plan_counter_bot, best_plans,
                  exact_game, play_game, pi_digit, youll_remain_bot, youll_change_bot, youll_remain_if_won_else_change_bot,
-                 historian_bot, constant_bot, three_cycle_bot, pattern_bot_2)
+                 historian_bot, constant_bot, three_cycle_bot, pattern_bot_1, pattern_bot_2)
+import itertools
 
 NUM_ROUNDS = rps.NUM_ROUNDS
 NUM_GAMES = 10 # sampled games in each seat
@@ -31,7 +32,15 @@ print("   Margin the mixture buys per 10 rounds, exact over 30 rounds. The far-s
 print("   block, or 1 or 2 rounds into the next.")
 POOL = {"remain": fixed_start(youll_remain_bot), "change": fixed_start(youll_change_bot), "if_won": fixed_start(youll_remain_if_won_else_change_bot),
         "historian": fixed_start(historian_bot), "constant": fixed_start(constant_bot), "three_cycle": fixed_start(three_cycle_bot),
-        "pattern_2": fixed_start(pattern_bot_2), "remain_from_paper": fixed_start(youll_remain_bot, 1)}
+        "pattern_1": fixed_start(pattern_bot_1), "pattern_2": fixed_start(pattern_bot_2), "remain_from_paper": fixed_start(youll_remain_bot, 1)}
+changed = []
+for size in (2, 3):
+    for names in itertools.combinations(POOL, size):
+        mix = mixture_bot([POOL[n] for n in names], "mix")
+        if abs(exact_bought(mix, mixture_counter_bot(mix, "greedy"), 20) - exact_bought(mix, lookahead_counter_bot(mix, "far-sighted", into_next_block = 0), 20)) > 1e-9:
+            changed.append("+".join(names))
+print(f"   Of all {sum(1 for size in (2, 3) for _ in itertools.combinations(POOL, size))} mixtures of 2 or 3 of these {len(POOL)} bots, planning to the end of the block")
+print(f"   changed what the mixture buys (exactly, over 20 rounds) for {len(changed)}: {', '.join(changed)}. Some of them, over 30 rounds:")
 MIXTURES = [("remain", "change", "if_won"), ("remain", "change", "constant"), ("remain", "if_won", "historian"), ("change", "if_won", "constant"),
             ("change", "constant", "pattern_2"), ("change", "constant", "remain_from_paper"), ("if_won", "three_cycle", "remain_from_paper")]
 print("MIXTURE".ljust(38) + "GREEDY".ljust(10) + "TO BLOCK END".ljust(14) + "+1 ROUND".ljust(10) + "+2 ROUNDS")
@@ -63,14 +72,14 @@ print("2. VARIATIONS ON A THEME: a mixture of different strategies (Moody Predat
 print("   (Deja Vu Bot varied by Lopsided Bot's plans). Margin per 10 rounds; against the counter-bot it's exact for the plan bots.")
 three_plans = plan_bot(best_plans(3, 10, rest = 0), "lopsided_predator_3", base = rps.deja_vu_bot) # (3 plans: the same randomness as Moody Predator Bot)
 RIVALS = [rps.favorite_bot, rps.habit_bot, rps.deja_vu_bot, rps.youll_remain_bot, rps.historian_bot]
-print("BOT".ljust(24) + "BITS/10 ROUNDS".ljust(16) + "VS COUNTER-BOT".ljust(16) + "".join(f"VS {r.__name__.replace('_bot', '').upper()}".ljust(15) for r in RIVALS))
+print("BOT".ljust(24) + "BITS/10 ROUNDS".ljust(16) + "VS COUNTER-BOT".ljust(16) + "".join(f"VS {r.__name__.replace('_bot', '').upper()}".ljust(18) for r in RIVALS))
 for bot in [rps.moody_predator_bot, three_plans, rps.lopsided_predator_bot]:
     if hasattr(bot, "plans"):
         bits = math.log2(len(bot.plans)); against_counter = exact_bought(bot, plan_counter_bot(bot.plans, "counter", base = bot.base), 10) - 10
     else:
         bits = math.log2(len(bot.strategies)); against_counter = sampled_margin(bot, mixture_counter_bot(bot, "counter"))
     print(bot.__name__.ljust(24) + f"{bits:.2f}".ljust(16) + f"{against_counter:+.3f}".ljust(16)
-          + "".join(f"{sampled_margin(bot, r, 5):+.3f}".ljust(15) for r in RIVALS))
+          + "".join(f"{sampled_margin(bot, r, 5):+.3f}".ljust(18) for r in RIVALS))
 plans = best_plans(27, 10, rest = 0)
 theme = fixed_start(youll_remain_bot)
 def varied(plan): # You'll Remain Bot's move, varied by one plan (a strategy with no memory, so the far-sighted counter-bot can plan against it)
